@@ -109,7 +109,7 @@ static void fix_signal(GDBusConnection *connection,
 			g_print("DAMN!!! %s\n", str);
 	    }
             convert_db();
-	    g_print("lat:%lf, lon %lf, mode: %d\n", gd.lat, gd.lon, gd.mode);
+	    // g_print("lat:%lf, lon %lf, mode: %d\n", gd.lat, gd.lon, gd.mode);
 	    g_variant_iter_free(iter);
 	    blink(0.3);
 	} else
@@ -551,6 +551,7 @@ int main(int argc, char *argv[])
 		insert_signal, NULL, NULL);
 	g_dbus_connection_signal_subscribe(conn, NULL, "ru.itetra.lls.data", "data", "/", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
 		fuel_signal, NULL, NULL);
+	update_voltage(NULL);
 	g_print("All stuffed, working\n");
 	g_main_loop_run(loop);
 	sqlite3_close(dbraw.db);
