@@ -546,7 +546,7 @@ int main(int argc, char *argv[])
 	g_dbus_connection_signal_subscribe(conn, NULL, "org.gpsd", "satellites", "/org/gpsd", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
 		satellites_signal, NULL, NULL);
 	g_dbus_connection_signal_subscribe(conn, NULL, "ru.itetra.Database", "battery", "/", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
-		battery_signal, NULL, NULL);
+		battery_signal, &dbpwr, NULL);
 	g_dbus_connection_signal_subscribe(conn, NULL, "ru.itetra.Database", "insert", "/", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
 		insert_signal, NULL, NULL);
 	g_dbus_connection_signal_subscribe(conn, NULL, "ru.itetra.lls.data", "data", "/", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
