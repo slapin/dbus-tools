@@ -33,7 +33,7 @@ geosave_LDADD = $(LDADD) -lm
 gio_gpsd.c gio_gpsd.h: org.gpsd.xml
 	gdbus-codegen --generate-c-code gio_gpsd --c-namespace gpsd $<
 
-#clean:
-#	rm -f *.o gio_gpsd.c gio_gpsd.h exp1 exp2 geowriter
-#experiment3.o: experiment3.c gio_gpsd.h
+gio_database.c gio_database.h: ru.itetra.Database.xml
+	gdbus-codegen --generate-c-code gio_database --c-namespace gio_db $<
+
 

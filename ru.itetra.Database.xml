@@ -1,0 +1,28 @@
+<node>
+	<interface name="ru.itetra.Database">
+		<signal name="insert">
+			<arg name="dbname" type="s"/>
+			<arg name="args" type="av"/>
+		</signal>
+		<signal name="battery">
+			<arg name="data" type="ad{sv}"/>
+		</signal>
+		<signal name="sekop_gnss_diag">
+			<arg name="state" type="i"/>
+		</signal>
+		<method name="setreg">
+			<arg name="name", type="v"/>
+			<arg name="value", type="v"/>
+		</method>
+		<method name="getreg">
+			<arg name="name", type="v"/>
+			<arg out name="value", type="v"/>
+		</method>
+		<method name="count">
+		</method
+		<method name="delete">
+		</method
+		<method name="select">
+		</method
+	</interface>
+</node>
