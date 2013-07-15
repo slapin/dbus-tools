@@ -136,7 +136,7 @@ INSTALL_PROGRAM = @INSTALL_PROGRAM@
 INSTALL_SCRIPT = @INSTALL_SCRIPT@
 INSTALL_STRIP_PROGRAM = @INSTALL_STRIP_PROGRAM@
 LD = @LD@
-LDFLAGS = @LDFLAGS@
+LDFLAGS = -g
 LIBOBJS = @LIBOBJS@
 LIBS = @LIBS@
 LIBTOOL = @LIBTOOL@
@@ -226,7 +226,7 @@ top_srcdir = @top_srcdir@
 AUTOMAKE_OPTIONS = 1.11
 ACLOCAL_AMFLAGS = -I m4
 LDADD = $(GLIB_LIBS) $(SQLITE_LIBS)
-AM_CPPFLAGS = $(GLIB_CFLAGS) $(SQLITE_CFLAGS)
+AM_CPPFLAGS = $(GLIB_CFLAGS) $(SQLITE_CFLAGS) -g
 exp1_SOURCES = experiment1.c
 exp1_CPPFLAGS = $(DBUS_CFLAGS)
 exp1_LDADD = $(DBUS_LIBS)
@@ -763,9 +763,8 @@ uninstall-am: uninstall-binPROGRAMS
 gio_gpsd.c gio_gpsd.h: org.gpsd.xml
 	gdbus-codegen --generate-c-code gio_gpsd --c-namespace gpsd $<
 
-#clean:
-#	rm -f *.o gio_gpsd.c gio_gpsd.h exp1 exp2 geowriter
-#experiment3.o: experiment3.c gio_gpsd.h
+gio_database.c gio_database.h: ru.itetra.Database.xml
+	gdbus-codegen --generate-c-code gio_database --c-namespace gio_db $<
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
