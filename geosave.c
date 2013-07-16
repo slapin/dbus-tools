@@ -535,7 +535,7 @@ int main(int argc, char *argv[])
 		battery_signal, &dbpwr, NULL);
 	g_dbus_connection_signal_subscribe(conn, NULL, "ru.itetra.Database", "insert", "/", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
 		insert_signal, NULL, NULL);
-	g_dbus_connection_signal_subscribe(conn, NULL, "ru.itetra.lls.data", "data", "/", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
+	g_dbus_connection_signal_subscribe(conn, NULL, "ru.itetra.lls.data", "data", "/ru/itetra/lls/data", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
 		fuel_signal, NULL, NULL);
 	update_voltage(NULL);
 	alarmdev = g_io_channel_new_file("/dev/input/event1", "r", &error);
