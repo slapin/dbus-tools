@@ -5,11 +5,49 @@
 #include <math.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <linux/input.h>
 
 static GMainLoop *loop = NULL;
+static GIOChannel *alarmdev;
 struct dbconn {
+	const char *path;
+	const char *create_sql;
+	const char *insert_sql;
 	sqlite3_stmt *insert;
 	sqlite3 *db;
+};
+
+static struct dbconn dbraw = {
+	.path = "/var/db/rawgeo.db",
+	.create_sql = "CREATE TABLE IF NOT EXISTS geo(time INTEGER PRIMARY KEY UNIQUE NOT NULL, \
+		     latitude INTEGER NOT NULL, \
+		     longitude INTEGER NOT NULL, \
+		     speed INTEGER NOT NULL, \
+		     heading INTEGER NOT NULL, \
+		     gdop INTEGER NOT NULL);",
+	.insert_sql = "INSERT INTO geo VALUES(?,?,?,?,?,?)",
+};
+static struct dbconn dbgeo = {
+	.path = "/var/db/geo.db",
+	.create_sql = "CREATE TABLE IF NOT EXISTS geo(time INTEGER PRIMARY KEY UNIQUE NOT NULL, \
+		     latitude INTEGER NOT NULL, \
+		     longitude INTEGER NOT NULL, \
+		     speed INTEGER NOT NULL, \
+		     heading INTEGER NOT NULL, \
+		     gdop INTEGER NOT NULL);",
+	.insert_sql = "INSERT INTO geo VALUES(?,?,?,?,?,?)",
+};
+static struct dbconn dbgnss = {
+	.path = "/var/db/gnss.db",
+	.create_sql = "CREATE TABLE IF NOT EXISTS status(time INTEGER PRIMARY KEY UNIQUE NOT NULL, \
+		     value INTEGER NOT NULL);",
+	.insert_sql = "INSERT INTO status VALUES(?,?)",
+};
+static struct dbconn dbpwr = {
+	.path = "/var/db/power.db",
+	.create_sql = "CREATE TABLE IF NOT EXISTS power(time INTEGER PRIMARY KEY UNIQUE NOT NULL, \
+		     value INTEGER NOT NULL);",
+	.insert_sql = "INSERT INTO power VALUES(?,?)",
 };
 
 struct statusdata {
@@ -21,13 +59,14 @@ struct statusdata {
 	uint32_t lastval;
 };
 
-static struct dbconn dbraw, dbgeo, dbgnss, dbpwr;
 static struct statusdata status;
 
 const char *ledfile = "/sys/class/leds/crux:red/brightness";
+const char *alarmfile = "/dev/input/event1";
 
 static GOptionEntry opts[] = {
 	{"ledpath", 'l', 0, G_OPTION_ARG_STRING, &ledfile, "path to led control file", NULL},
+	{"alarmpath", 'a', 0, G_OPTION_ARG_STRING, &alarmfile, "path to alarm input file", NULL},
 	{NULL},
 };
 
@@ -246,13 +285,56 @@ static void battery_signal(GDBusConnection *connection,
 		if (ret != SQLITE_DONE && ret != SQLITE_CONSTRAINT)
 			g_error("execute statement :( = %d\n", ret);
 		if (ret == SQLITE_CONSTRAINT)
-			g_print("failed to insert (time = %d)\n", gd.time);
+			g_print("failed to insert\n");
 		sqlite3_reset(data->insert);
 		oldstate = state;
 	    }
 	} else
 	    g_print("params are: %s\n",
 		g_variant_get_type_string (parameters));
+}
+
+static void insert_alarm(struct dbconn *db)
+{
+	int ret;
+
+	g_print("Alarm!!!\n");
+	sqlite3_bind_int(db->insert, 1, (int32_t)time(NULL));
+	sqlite3_bind_int(db->insert, 2, 1);
+	sqlite3_bind_int(db->insert, 3, gd.time);
+	sqlite3_bind_int(db->insert, 4, gd.dblat);
+	sqlite3_bind_int(db->insert, 5, gd.dblon);
+	sqlite3_bind_int(db->insert, 6, gd.dbspeed);
+	sqlite3_bind_int(db->insert, 7, gd.dbhead);
+	sqlite3_bind_int(db->insert, 8, gd.gdop);
+	ret = sqlite3_step(db->insert);
+	if (ret != SQLITE_DONE && ret != SQLITE_CONSTRAINT)
+		g_error("execute statement :( = %d\n", ret);
+	if (ret == SQLITE_CONSTRAINT)
+		g_print("failed to insert (time = %d)\n", gd.time);
+	sqlite3_reset(db->insert);
+}
+
+static gboolean watch_alarm(GIOChannel *s, GIOCondition c, gpointer data)
+{
+	struct input_event ev;
+	gsize len;
+	GError *error;
+	int rstatus;
+	struct dbconn *db = data;
+	rstatus = g_io_channel_read_chars(s, (gchar *)&ev, sizeof(ev), &len, &error);
+	if (rstatus == G_IO_STATUS_NORMAL && len == sizeof(ev)) {
+		if (ev.type == 1 && ev.value == 1 && ev.code == 256)
+			insert_alarm(db);
+		
+	} else {
+		g_printerr("invalid read of %d bytes\n", len);
+		if (rstatus == G_IO_STATUS_ERROR) {
+			g_printerr("error occured: %s\n", error->message);
+			g_error_free(error);
+		}
+	}
+	return TRUE;
 }
 
 
@@ -265,37 +347,14 @@ static void insert_signal(GDBusConnection *connection,
 			     gpointer userdata)
 {
 	g_print("insert\n");
-	if (g_variant_is_of_type (parameters, G_VARIANT_TYPE ("(a{sv})"))) {
+	if (g_variant_is_of_type (parameters, G_VARIANT_TYPE ("(sav)"))) {
             char *str;
 	    GVariant *v;
-	    int i;
 	    GVariantIter *iter;
 	    g_print("eek!\n");
-	    i = 0;
-	    g_variant_get(parameters, "(a{sv})", &iter);
-            while(g_variant_iter_loop(iter, "(sv)", &str, &v)) {
-		if (!strcmp(str, "mode"))
-			g_variant_get(v, "i", &status.mode);
-			
-		switch(i) {
-		case 0:
-		case 1:
-		case 2:
-		case 3:
-		case 4:
-		case 5:
-		case 6:
-		case 7:
-		case 8:
-		case 9:
-		case 10:
-			g_print("%s: %s\n", str, g_variant_get_type_string(v));
-			break;
-		default:
-			g_print("dunno\n");
-			break;
-		}
-		i++;
+	    g_variant_get(parameters, "(sav)", &str, &iter);
+            while(g_variant_iter_loop(iter, "v", &v)) {
+		g_print("%s: %s\n", str, g_variant_get_type_string(v));
 	    }
 	    g_variant_iter_free(iter);
 	} else
@@ -352,49 +411,16 @@ static void fuel_signal(GDBusConnection *connection,
 
 
 
-static void do_create_geo_db(sqlite3 *db)
+static void do_create_db(struct dbconn *data)
 {
 	char *serror;
 	int ret;
-	const char *sql = "CREATE TABLE IF NOT EXISTS geo(time INTEGER PRIMARY KEY UNIQUE NOT NULL, \
-		     latitude INTEGER NOT NULL, \
-		     longitude INTEGER NOT NULL, \
-		     speed INTEGER NOT NULL, \
-		     heading INTEGER NOT NULL, \
-		     gdop INTEGER NOT NULL);";
-	ret = sqlite3_exec(db, sql, NULL, 0, &serror);
+	ret = sqlite3_exec(data->db, data->create_sql, NULL, 0, &serror);
 	if (ret != SQLITE_OK) {
 		g_error("database creation error: %s\n", serror);
 		sqlite3_free(serror);
 	}
 }
-
-static void do_create_status_db(sqlite3 *db)
-{
-	char *serror;
-	int ret;
-	const char *sql = "CREATE TABLE IF NOT EXISTS status(time INTEGER PRIMARY KEY UNIQUE NOT NULL, \
-		     value INTEGER NOT NULL);";
-	ret = sqlite3_exec(db, sql, NULL, 0, &serror);
-	if (ret != SQLITE_OK) {
-		g_error("database creation error: %s\n", serror);
-		sqlite3_free(serror);
-	}
-}
-
-static void do_create_power_db(sqlite3 *db)
-{
-	char *serror;
-	int ret;
-	const char *sql = "CREATE TABLE IF NOT EXISTS power(time INTEGER PRIMARY KEY UNIQUE NOT NULL, \
-		     value INTEGER NOT NULL);";
-	ret = sqlite3_exec(db, sql, NULL, 0, &serror);
-	if (ret != SQLITE_OK) {
-		g_error("database creation error: %s\n", serror);
-		sqlite3_free(serror);
-	}
-}
-
 
 static gboolean geo_write(gpointer userdata)
 {
@@ -442,74 +468,34 @@ static gboolean geo_freemem(gpointer userdata)
 	return TRUE;
 }
 
-static void create_geo_db(struct dbconn *data, char *path)
+
+static void create_db(struct dbconn *data)
 {
-	const char *ins = "INSERT INTO geo VALUES(?,?,?,?,?,?)";
+	const char *ins = data->insert_sql;
 	int ret;
 
-	ret = sqlite3_open(path, &data->db);
+	ret = sqlite3_open(data->path, &data->db);
 	if (data->db)
-		do_create_geo_db(data->db);
+		do_create_db(data);
 	else {
-		unlink(path);
-		ret = sqlite3_open(path, &data->db);
+		unlink(data->path);
+		ret = sqlite3_open(data->path, &data->db);
 		if (data->db)
-			do_create_geo_db(data->db);
+			do_create_db(data);
 		else
 			g_error("unable to open/create database\n");
 	}
-	ret = sqlite3_prepare_v2(data->db, ins, strlen(ins) + 1, &data->insert, NULL);
+	ret = sqlite3_prepare_v2(data->db, data->insert_sql, strlen(ins) + 1, &data->insert, NULL);
 	if (ret != SQLITE_OK)
-		g_error("failed to prepare statement (%s, %s) %d\n", path, ins, ret);
+		g_error("failed to prepare statement (%s, %s) %d\n", data->path, data->insert_sql, ret);
 }
-static void create_status_db(struct dbconn *data, char *path)
-{
-	const char *ins = "INSERT INTO status VALUES(?,?)";
-	int ret;
-
-	ret = sqlite3_open(path, &data->db);
-	if (data->db)
-		do_create_status_db(data->db);
-	else {
-		unlink(path);
-		ret = sqlite3_open(path, &data->db);
-		if (data->db)
-			do_create_status_db(data->db);
-		else
-			g_error("unable to open/create database\n");
-	}
-	ret = sqlite3_prepare_v2(data->db, ins, strlen(ins) + 1, &data->insert, NULL);
-	if (ret != SQLITE_OK)
-		g_error("failed to prepare statement (%s, %s) %d\n", path, ins, ret);
-}
-
-static void create_power_db(struct dbconn *data, char *path)
-{
-	const char *ins = "INSERT INTO power VALUES(?,?)";
-	int ret;
-
-	ret = sqlite3_open(path, &data->db);
-	if (data->db)
-		do_create_power_db(data->db);
-	else {
-		unlink(path);
-		ret = sqlite3_open(path, &data->db);
-		if (data->db)
-			do_create_power_db(data->db);
-		else
-			g_error("unable to open/create database\n");
-	}
-	ret = sqlite3_prepare_v2(data->db, ins, strlen(ins) + 1, &data->insert, NULL);
-	if (ret != SQLITE_OK)
-		g_error("failed to prepare statement (%s, %s) %d\n", path, ins, ret);
-}
-
 
 int main(int argc, char *argv[])
 {
 	GError *error = NULL;
 	GDBusConnection *conn;
 	GOptionContext *ocontext;
+	GFileMonitor *mon;
 	ocontext = g_option_context_new("- insert geodata from D-Bus into databases");
 
 	/* Command line options stuff */
@@ -529,10 +515,10 @@ int main(int argc, char *argv[])
 		g_error_free (error);
 		return 1;
 	}
-	create_geo_db(&dbraw, "/var/db/rawgeo.db");
-	create_geo_db(&dbgeo, "/var/db/geo.db");
-	create_status_db(&dbgnss, "/var/db/gnss.db");
-	create_power_db(&dbpwr, "/var/db/power.db");
+	create_db(&dbraw);
+	create_db(&dbgeo);
+	create_db(&dbgnss);
+	create_db(&dbpwr);
 	g_timeout_add_seconds(3, geo_write, &dbraw);
 	g_timeout_add_seconds(10, geo_write, &dbgeo);
 	g_timeout_add_seconds(30, geo_freemem, &dbraw);
@@ -552,6 +538,14 @@ int main(int argc, char *argv[])
 	g_dbus_connection_signal_subscribe(conn, NULL, "ru.itetra.lls.data", "data", "/", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
 		fuel_signal, NULL, NULL);
 	update_voltage(NULL);
+	alarmdev = g_io_channel_new_file("/dev/input/event1", "r", &error);
+	if (!alarmdev) {
+		g_error("can't open /dev/input/event1: %s\n", error->message);
+		g_error_free(error);
+		return 1;
+	}
+	g_io_add_watch(alarmdev, G_IO_IN, watch_alarm, NULL);
+
 	g_print("All stuffed, working\n");
 	g_main_loop_run(loop);
 	sqlite3_close(dbraw.db);
