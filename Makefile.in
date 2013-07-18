@@ -35,7 +35,7 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 noinst_PROGRAMS = exp1$(EXEEXT) exp2$(EXEEXT) exp3$(EXEEXT)
-bin_PROGRAMS = geosave$(EXEEXT)
+bin_PROGRAMS = geosave$(EXEEXT) modemd$(EXEEXT)
 subdir = .
 DIST_COMMON = README $(am__configure_deps) $(srcdir)/Makefile.am \
 	$(srcdir)/Makefile.in $(top_srcdir)/configure AUTHORS COPYING \
@@ -69,6 +69,9 @@ exp3_DEPENDENCIES = $(am__DEPENDENCIES_2)
 am_geosave_OBJECTS = geosave.$(OBJEXT)
 geosave_OBJECTS = $(am_geosave_OBJECTS)
 geosave_DEPENDENCIES = $(am__DEPENDENCIES_2)
+am_modemd_OBJECTS = modemd.$(OBJEXT)
+modemd_OBJECTS = $(am_modemd_OBJECTS)
+modemd_DEPENDENCIES = $(am__DEPENDENCIES_2)
 DEFAULT_INCLUDES = -I.@am__isrc@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
@@ -83,9 +86,9 @@ LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
 SOURCES = $(exp1_SOURCES) $(exp2_SOURCES) $(exp3_SOURCES) \
-	$(geosave_SOURCES)
+	$(geosave_SOURCES) $(modemd_SOURCES)
 DIST_SOURCES = $(exp1_SOURCES) $(exp2_SOURCES) $(exp3_SOURCES) \
-	$(geosave_SOURCES)
+	$(geosave_SOURCES) $(modemd_SOURCES)
 ETAGS = etags
 CTAGS = ctags
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
@@ -237,6 +240,8 @@ exp3_SOURCES = experiment3.c gio_gpsd.h
 exp3_LDADD = $(LDADD) -lm
 geosave_SOURCES = geosave.c
 geosave_LDADD = $(LDADD) -lm
+modemd_SOURCES = modemd.c
+modemd_LDADD = $(LDADD) -lm
 all: all-am
 
 .SUFFIXES:
@@ -339,6 +344,9 @@ exp3$(EXEEXT): $(exp3_OBJECTS) $(exp3_DEPENDENCIES)
 geosave$(EXEEXT): $(geosave_OBJECTS) $(geosave_DEPENDENCIES) 
 	@rm -f geosave$(EXEEXT)
 	$(LINK) $(geosave_OBJECTS) $(geosave_LDADD) $(LIBS)
+modemd$(EXEEXT): $(modemd_OBJECTS) $(modemd_DEPENDENCIES) 
+	@rm -f modemd$(EXEEXT)
+	$(LINK) $(modemd_OBJECTS) $(modemd_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
@@ -350,6 +358,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/exp2-experiment2.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/experiment3.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/geosave.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/modemd.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<

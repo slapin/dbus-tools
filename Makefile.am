@@ -5,7 +5,7 @@ LDADD = $(GLIB_LIBS) $(SQLITE_LIBS)
 LDFLAGS = -g
 AM_CPPFLAGS = $(GLIB_CFLAGS) $(SQLITE_CFLAGS) -g
 noinst_PROGRAMS = exp1 exp2 exp3
-bin_PROGRAMS = geosave
+bin_PROGRAMS = geosave modemd
 
 exp1_SOURCES = experiment1.c
 exp1_CPPFLAGS = $(DBUS_CFLAGS)
@@ -17,6 +17,8 @@ exp3_SOURCES = experiment3.c gio_gpsd.h
 exp3_LDADD = $(LDADD) -lm
 geosave_SOURCES = geosave.c
 geosave_LDADD = $(LDADD) -lm
+modemd_SOURCES = modemd.c
+modemd_LDADD = $(LDADD) -lm
 
 #exp1: experiment1.o
 #	$(CC) $(LDFLAGS) -o $@ $< $(LIBS)
