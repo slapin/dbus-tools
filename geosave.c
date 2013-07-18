@@ -49,6 +49,30 @@ static struct dbconn dbpwr = {
 		     value INTEGER NOT NULL);",
 	.insert_sql = "INSERT INTO power VALUES(?,?)",
 };
+static struct dbconn dbalarm = {
+	.path = "/var/db/alarm.db",
+	.create_sql = "CREATE TABLE IF NOT EXISTS alarm(time INTEGER PRIMARY KEY UNIQUE NOT NULL, \
+			source INTEGER NOT NULL,   	\
+			gtime INTEGER NOT NULL,    	\
+			latitude INTEGER NOT NULL, 	\
+			longitude INTEGER NOT NULL,	\
+			speed INTEGER NOT NULL,		\
+			heading INTEGER NOT NULL,	\
+			gdop INTEGER NOT NULL);",
+	.insert_sql = "INSERT INTO alarm VALUES(?,?,?,?,?,?,?,?)",
+};
+static struct dbconn dbfuel = {
+	.path = "/var/db/channels.db",
+	.create_sql = "CREATE TABLE IF NOT EXISTS channels(time INTEGER PRIMARY KEY UNIQUE NOT NULL, \
+			addr INTEGER NOT NULL,   	\
+			temp INTEGER NOT NULL,    	\
+			level INTEGER NOT NULL, 	\
+			freq INTEGER NOT NULL,		\
+			status INTEGER NOT NULL);",
+	.insert_sql = "INSERT INTO channels VALUES(?,?,?,?,?,?)",
+};
+
+
 
 struct statusdata {
 	uint32_t time;
@@ -261,6 +285,19 @@ static gboolean update_voltage(gpointer userdata)
 	return TRUE;
 }
 
+static int db_do_step(struct dbconn *data)
+{
+	int ret;
+	while((ret = sqlite3_step(data->insert)) == SQLITE_BUSY)
+		usleep(2000000);
+	if (ret != SQLITE_DONE && ret != SQLITE_CONSTRAINT && ret != SQLITE_BUSY && ret != SQLITE_LOCKED)
+		g_error("execute statement :( = %d\n", ret);
+	if (ret == SQLITE_CONSTRAINT)
+		g_print("failed to insert\n");
+	sqlite3_reset(data->insert);
+	return ret;
+}
+
 static void battery_signal(GDBusConnection *connection,
 			     const gchar *sender_name,
 			     const gchar *object_path,
@@ -281,12 +318,7 @@ static void battery_signal(GDBusConnection *connection,
 		volcode = voltage * 0x3ff / 5000000;
 		voldata = state | ((volcode & 0x3ff) << 16);
 		sqlite3_bind_int(data->insert, 2, (int32_t)voldata);
-		ret = sqlite3_step(data->insert);
-		if (ret != SQLITE_DONE && ret != SQLITE_CONSTRAINT)
-			g_error("execute statement :( = %d\n", ret);
-		if (ret == SQLITE_CONSTRAINT)
-			g_print("failed to insert\n");
-		sqlite3_reset(data->insert);
+		db_do_step(data);
 		oldstate = state;
 	    }
 	} else
@@ -307,12 +339,7 @@ static void insert_alarm(struct dbconn *db)
 	sqlite3_bind_int(db->insert, 6, gd.dbspeed);
 	sqlite3_bind_int(db->insert, 7, gd.dbhead);
 	sqlite3_bind_int(db->insert, 8, gd.gdop);
-	ret = sqlite3_step(db->insert);
-	if (ret != SQLITE_DONE && ret != SQLITE_CONSTRAINT)
-		g_error("execute statement :( = %d\n", ret);
-	if (ret == SQLITE_CONSTRAINT)
-		g_print("failed to insert (time = %d)\n", gd.time);
-	sqlite3_reset(db->insert);
+	db_do_step(db);
 }
 
 static gboolean watch_alarm(GIOChannel *s, GIOCondition c, gpointer data)
@@ -362,6 +389,7 @@ static void insert_signal(GDBusConnection *connection,
 		g_variant_get_type_string (parameters));
 }
 
+static int fuel_can_insert = 1;
 static void fuel_signal(GDBusConnection *connection,
 			     const gchar *sender_name,
 			     const gchar *object_path,
@@ -370,40 +398,26 @@ static void fuel_signal(GDBusConnection *connection,
 			     GVariant *parameters,
 			     gpointer userdata)
 {
+	struct dbconn *data = userdata;
+	guint32 d1, d2, d3, d4, d5;
 	g_print("fuel\n");
-	if (g_variant_is_of_type (parameters, G_VARIANT_TYPE ("(a{sv})"))) {
-            char *str;
-	    GVariant *v;
-	    int i;
-	    GVariantIter *iter;
+	if (g_variant_is_of_type (parameters, G_VARIANT_TYPE ("(uuuuu)"))) {
 	    g_print("eek!\n");
-	    i = 0;
-	    g_variant_get(parameters, "(a{sv})", &iter);
-            while(g_variant_iter_loop(iter, "(sv)", &str, &v)) {
-		if (!strcmp(str, "mode"))
-			g_variant_get(v, "i", &status.mode);
-			
-		switch(i) {
-		case 0:
-		case 1:
-		case 2:
-		case 3:
-		case 4:
-		case 5:
-		case 6:
-		case 7:
-		case 8:
-		case 9:
-		case 10:
-			g_print("%s: %s\n", str, g_variant_get_type_string(v));
-			break;
-		default:
-			g_print("dunno\n");
-			break;
-		}
-		i++;
+	    g_variant_get(parameters, "(uuuuu)", &d1, &d2, &d3, &d4, &d5);
+	    if (fuel_can_insert) {
+		int ret;
+		sqlite3_bind_int(data->insert, 1, (int32_t)time(NULL));
+		sqlite3_bind_int(data->insert, 2, (int32_t)d1);
+		sqlite3_bind_int(data->insert, 3, (int32_t)d2);
+		sqlite3_bind_int(data->insert, 4, (int32_t)d3);
+		sqlite3_bind_int(data->insert, 5, (int32_t)d4);
+		sqlite3_bind_int(data->insert, 6, (int32_t)d5);
+		db_do_step(data);
 	    }
-	    g_variant_iter_free(iter);
+	    if (d5 == 2)
+		fuel_can_insert = 0;
+	    else
+		fuel_can_insert = 1;
 	} else
 	    g_print("params are: %s\n",
 		g_variant_get_type_string (parameters));
@@ -434,12 +448,7 @@ static gboolean geo_write(gpointer userdata)
 	sqlite3_bind_int(data->insert, 4, (int32_t)gd.dbspeed);
 	sqlite3_bind_int(data->insert, 5, (int32_t)gd.dbhead);
 	sqlite3_bind_int(data->insert, 6, (int32_t)gd.gdop);
-	ret = sqlite3_step(data->insert);
-	if (ret != SQLITE_DONE && ret != SQLITE_CONSTRAINT)
-		g_error("execute statement :( = %d\n", ret);
-	if (ret == SQLITE_CONSTRAINT)
-		g_print("failed to insert (time = %d)\n", gd.time);
-	sqlite3_reset(data->insert);
+	db_do_step(data);
 out:
 	return TRUE;
 }
@@ -451,12 +460,7 @@ static gboolean gnss_write(gpointer userdata)
 		goto out;
 	sqlite3_bind_int(data->insert, 1, (int32_t)status.time);
 	sqlite3_bind_int(data->insert, 2, (int32_t)status.value);
-	ret = sqlite3_step(data->insert);
-	if (ret != SQLITE_DONE && ret != SQLITE_CONSTRAINT)
-		g_error("execute statement :( = %d\n", ret);
-	if (ret == SQLITE_CONSTRAINT)
-		g_print("failed to insert (time = %d)\n", gd.time);
-	sqlite3_reset(data->insert);
+	db_do_step(data);
 	status.lastval = status.value;
 out:
 	return TRUE;
@@ -519,6 +523,8 @@ int main(int argc, char *argv[])
 	create_db(&dbgeo);
 	create_db(&dbgnss);
 	create_db(&dbpwr);
+	create_db(&dbalarm);
+	create_db(&dbfuel);
 	g_timeout_add_seconds(3, geo_write, &dbraw);
 	g_timeout_add_seconds(10, geo_write, &dbgeo);
 	g_timeout_add_seconds(30, geo_freemem, &dbraw);
@@ -536,15 +542,16 @@ int main(int argc, char *argv[])
 	g_dbus_connection_signal_subscribe(conn, NULL, "ru.itetra.Database", "insert", "/", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
 		insert_signal, NULL, NULL);
 	g_dbus_connection_signal_subscribe(conn, NULL, "ru.itetra.lls.data", "data", "/ru/itetra/lls/data", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
-		fuel_signal, NULL, NULL);
+		fuel_signal, &dbfuel, NULL);
 	update_voltage(NULL);
-	alarmdev = g_io_channel_new_file("/dev/input/event1", "r", &error);
+	alarmdev = g_io_channel_new_file(alarmfile, "r", &error);
 	if (!alarmdev) {
-		g_error("can't open /dev/input/event1: %s\n", error->message);
+		g_error("can't open %s: %s\n", alarmfile, error->message);
 		g_error_free(error);
 		return 1;
 	}
-	g_io_add_watch(alarmdev, G_IO_IN, watch_alarm, NULL);
+	g_io_channel_set_encoding(alarmdev, NULL, &error);
+	g_io_add_watch(alarmdev, G_IO_IN, watch_alarm, &dbalarm);
 
 	g_print("All stuffed, working\n");
 	g_main_loop_run(loop);
