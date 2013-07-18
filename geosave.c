@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <linux/input.h>
+#include <stdlib.h>
 
 static GMainLoop *loop = NULL;
 static GIOChannel *alarmdev;

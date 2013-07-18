@@ -3,7 +3,7 @@ ACLOCAL_AMFLAGS = -I m4
 
 LDADD = $(GLIB_LIBS) $(SQLITE_LIBS)
 LDFLAGS = -g
-AM_CPPFLAGS = $(GLIB_CFLAGS) $(SQLITE_CFLAGS) -g
+AM_CPPFLAGS = -Wall $(GLIB_CFLAGS) $(SQLITE_CFLAGS) -g2 -ggdb
 noinst_PROGRAMS = exp1 exp2 exp3
 bin_PROGRAMS = geosave modemd
 
