@@ -11,12 +11,14 @@
 #define OFONO_SIM_INTERFACE OFONO_SERVICE ".SimManager"
 #define OFONO_NETREG_INTERFACE OFONO_SERVICE ".NetworkRegistration"
 #define OFONO_CONNMAN_INTERFACE OFONO_SERVICE ".ConnectionManager"
+#define OFONO_CONTEXT_INTERFACE OFONO_SERVICE ".ConnectionContext"
 
 struct privdata {
 	GDBusProxy *mgr;
 	GDBusProxy *modem;
 	GDBusProxy *netreg;
 	GDBusProxy *connman;
+	GDBusProxy *context;
 	gboolean modem_online;
 	gboolean modem_powered;
 	int registered;
@@ -27,11 +29,6 @@ struct privdata {
 struct privdata modemdata;
 
 static GMainLoop *loop = NULL;
-static void gprs_attach_context(struct privdata *data)
-{
-	g_print("Aieeeee!!!!\n");
-}
-
 static void export_gpio(int gpio)
 {
 	char num[16];
@@ -89,7 +86,7 @@ static void gpio_set_value(int gpio, int value)
 	snprintf(filepath, sizeof(filepath) - 1,
 		"/sys/class/gpio/gpio%d/value",
 		gpio);
-	fd = open(filepath, O_RDONLY);
+	fd = open(filepath, O_WRONLY);
 	if (value)
 		write(fd, "1", 1);
 	else
@@ -155,6 +152,135 @@ static void modem_power_off(void)
 	power_write(0);
 }
 
+static GVariant *get_proxy_props(GDBusProxy *proxy)
+{
+	GError *err = NULL;
+	GVariant *props;
+	props = g_dbus_proxy_call_sync(proxy,
+		 "GetProperties", NULL, G_DBUS_CALL_FLAGS_NONE,
+		 -1, NULL, &err);
+	if (err) {
+		g_warning("GetProperties failed: %s\n", err->message);
+		g_error_free(err);
+		return NULL;
+	}
+	return props;
+}
+
+static void process_proplist(struct privdata *data, GVariant *props,
+			     void (*func)(struct privdata *data,
+					  const char *k, GVariant *val))
+{
+	GVariantIter *iter;
+	const char *key;
+	GVariant *value;
+	g_variant_get (props, "(a{sv})", &iter);
+	while (g_variant_iter_loop (iter, "{sv}", &key, &value)) {
+		func(data, key, value);
+	}
+	g_variant_iter_free(iter);
+}
+
+
+static void get_process_props(GDBusProxy *proxy, struct privdata *data,
+			     void (*func)(struct privdata *data,
+					  const char *k, GVariant *val))
+{
+	GVariant *props = get_proxy_props(proxy);
+	if (props)
+		process_proplist(data, props, func);
+	g_variant_unref(props);
+}
+
+static void check_gdbus_error(char *what, GError *err)
+{
+	if (err) {
+		g_warning("%s failed: %s\n",  what, err->message);
+		g_error_free(err);
+	}
+}
+
+static void set_proxy_property(GDBusProxy *proxy,
+				const char *prop,
+				GVariant *val)
+{
+	GError *err = NULL;
+	GVariant *retv;
+	retv = g_dbus_proxy_call_sync(proxy, "SetProperty",
+		 g_variant_new("(sv)", prop, val),
+		 G_DBUS_CALL_FLAGS_NONE, 120000000, NULL, &err);
+	if (err) {
+		g_warning("Can't set prop %s\n", prop);
+		check_gdbus_error("SetProperty", err);
+		return;
+	}
+	if (retv)
+		g_print("value type: %s\n",
+			g_variant_get_type_string(retv));
+}
+static void context_signal_cb(GDBusProxy *connman, gchar *sender_name,
+			      gchar *signal_name, GVariant *parameters,
+			      gpointer data)
+{
+	g_print("context: signal: %s\n", signal_name);
+}
+
+static void check_context_prop(struct privdata *data, const char *key, GVariant *value)
+{
+	g_print("context prop: %s, value type: %s\n",
+		key,
+		g_variant_get_type_string(value));
+}
+static int used_context = 0;
+static void activate_context(struct privdata *data, const char *objpath)
+{
+	GError *err = NULL;
+	data->context = g_dbus_proxy_new_for_bus_sync(G_BUS_TYPE_SYSTEM,
+			G_DBUS_PROXY_FLAGS_NONE,
+			NULL,
+			OFONO_SERVICE,
+			objpath, /* FIXME */
+			OFONO_CONTEXT_INTERFACE,
+			NULL, &err);
+	if (err) {
+		g_warning("no proxy for context: %s\n", err->message);
+		g_error_free(err);
+		return;
+	}
+	g_signal_connect(data->context, "g-signal", G_CALLBACK(context_signal_cb), data);
+	get_process_props(data->context, data, check_context_prop);
+	set_proxy_property(data->context, "AccessPointName", g_variant_new_string("internet"));
+	set_proxy_property(data->context, "Active", g_variant_new_boolean(TRUE));
+	
+}
+static void get_connection_contexts(struct privdata *data)
+{
+	GError *err = NULL;
+	GVariantIter *iter;
+	const char *obj_path;
+	int i;
+	GVariant *contexts = g_dbus_proxy_call_sync(data->connman,
+		 "GetContexts", NULL, G_DBUS_CALL_FLAGS_NONE,
+		 -1, NULL, &err);
+	if (err) {
+		g_warning("GetContexts failed: %s\n", err->message);
+		g_error_free(err);
+		return;
+	}
+	g_print("contexts type: %s\n",
+		g_variant_get_type_string(contexts));
+	g_variant_get(contexts, "(a(oa{sv}))", &iter);
+	i = 0;
+	while (g_variant_iter_loop(iter, "oa{sv}", &obj_path, NULL)) {
+		g_print("context: %s\n", obj_path);
+		if (i == used_context)
+			activate_context(data, obj_path);
+		i++;
+	}
+	g_variant_iter_free(iter);
+	g_variant_unref(contexts);
+}
+
 static void check_connman_prop(struct privdata *data, const char *key, GVariant *value)
 {
 	g_print("value type: %s\n",
@@ -163,6 +289,8 @@ static void check_connman_prop(struct privdata *data, const char *key, GVariant 
 		gboolean val;
 		g_variant_get(value, "b", &val);
 		data->gprs_attached = val;
+		if (data->gprs_attached)
+			get_connection_contexts(data);
 	} else if (g_strcmp0(key, "Powered") == 0) {
 		gboolean val;
 		g_variant_get(value, "b", &val);
@@ -183,45 +311,6 @@ static void connman_signal_cb(GDBusProxy *connman, gchar *sender_name,
 		check_connman_prop(priv, key, value);
 		g_variant_unref(value);
 	}
-}
-
-static void process_proplist(struct privdata *data, GVariant *props,
-			     void (*func)(struct privdata *data,
-					  const char *k, GVariant *val))
-{
-	GVariantIter *iter;
-	const char *key;
-	GVariant *value;
-	g_variant_get (props, "(a{sv})", &iter);
-	while (g_variant_iter_loop (iter, "{sv}", &key, &value)) {
-		func(data, key, value);
-	}
-	g_variant_iter_free(iter);
-}
-
-static GVariant *get_proxy_props(GDBusProxy *proxy)
-{
-	GError *err = NULL;
-	GVariant *props;
-	props = g_dbus_proxy_call_sync(proxy,
-		 "GetProperties", NULL, G_DBUS_CALL_FLAGS_NONE,
-		 -1, NULL, &err);
-	if (err) {
-		g_warning("GetProperties failed: %s\n", err->message);
-		g_error_free(err);
-		return NULL;
-	}
-	return props;
-}
-
-static void get_process_props(GDBusProxy *proxy, struct privdata *data,
-			     void (*func)(struct privdata *data,
-					  const char *k, GVariant *val))
-{
-	GVariant *props = get_proxy_props(proxy);
-	if (props)
-		process_proplist(data, props, func);
-	g_variant_unref(props);
 }
 
 static void connman_stuff(struct privdata *data)
@@ -301,41 +390,17 @@ static void netreg_stuff(struct privdata *data)
 	get_process_props(data->netreg, data, check_netreg_property);
 }
 
-static void check_gdbus_error(char *what, GError *err)
-{
-	if (err) {
-		g_warning("%s failed: %s\n",  what, err->message);
-		g_error_free(err);
-	}
-}
-
 static void power_modem(GDBusProxy *proxy, struct privdata *data)
 {
-	GError *err = NULL;
-	GVariant *retv = g_dbus_proxy_call_sync(proxy, "SetProperty",
-		 g_variant_new("(sv)", "Powered", g_variant_new_boolean(TRUE)),
-		 G_DBUS_CALL_FLAGS_NONE, 120000000, NULL, &err);
-	if (err) {
-		check_gdbus_error("SetProperty Powered", err);
-		return;
-	}
-	if (retv)
-		g_print("value type: %s\n",
-			g_variant_get_type_string(retv));
+	g_print("modem power on\n");
+	set_proxy_property(proxy, "Powered", g_variant_new_boolean(TRUE));
+	g_print("done\n");
 }
 static void online_modem(GDBusProxy *proxy, struct privdata *data)
 {
-	GError *err = NULL;
-	GVariant *retv = g_dbus_proxy_call_sync(proxy, "SetProperty",
-		 g_variant_new("(sv)", "Online", g_variant_new_boolean(TRUE)),
-		 G_DBUS_CALL_FLAGS_NONE, 120000000, NULL, &err);
-	if (err) {
-		check_gdbus_error("SetProperty Online", err);
-		return;
-	}
-	if (retv)
-		g_print("value type: %s\n",
-			g_variant_get_type_string(retv));
+	g_print("modem power on\n");
+	set_proxy_property(proxy, "Online", g_variant_new_boolean(TRUE));
+	g_print("done\n");
 }
 
 static void check_interfaces(struct privdata *data, const char *iface)
@@ -346,6 +411,8 @@ static void check_interfaces(struct privdata *data, const char *iface)
 	else if (g_strcmp0(iface, OFONO_CONNMAN_INTERFACE) == 0)
 		have_connman = 1;
 	data->have_connman = have_connman;
+	if (have_connman)
+		connman_stuff(data);
 }
 
 static void check_modem_property(struct privdata *data, const char *key, GVariant *value)
@@ -377,6 +444,7 @@ static void set_properties(GDBusProxy *proxy, struct privdata *data)
 		power_modem(proxy, data);
 	if (!data->modem_online && data->modem_powered)
 		online_modem(proxy, data);
+	g_print("all done\n");
 }
 
 static void modem_obj_cb(GDBusProxy *proxy, gchar *sender_name,
@@ -428,14 +496,6 @@ static void manager_signal_cb(GDBusProxy *mgr, gchar *sender_name,
 		modem_power_off();
 	}
 }
-static gboolean check_modem_attach(gpointer userdata)
-{
-	struct privdata *priv = userdata;
-	GError *err;
-	if (priv->have_connman)
-		connman_stuff(priv);
-	return TRUE;
-}
 int main()
 {
 	GError *err = NULL;
@@ -471,7 +531,7 @@ int main()
 	}
 	g_variant_iter_free(iter);
 	g_variant_unref(modems);
-	g_timeout_add_seconds(1, check_modem_attach, priv);
+//	g_timeout_add_seconds(1, check_modem_attach, priv);
 	
 	g_main_loop_run(loop);
 	return 0;
