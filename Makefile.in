@@ -69,7 +69,9 @@ exp3_DEPENDENCIES = $(am__DEPENDENCIES_2)
 am_geosave_OBJECTS = geosave.$(OBJEXT)
 geosave_OBJECTS = $(am_geosave_OBJECTS)
 geosave_DEPENDENCIES = $(am__DEPENDENCIES_2)
-am_modemd_OBJECTS = modemd.$(OBJEXT) modem_power.$(OBJEXT)
+am_modemd_OBJECTS = modemd.$(OBJEXT) modem_power.$(OBJEXT) \
+	leds.$(OBJEXT) connman.$(OBJEXT) contexts.$(OBJEXT) \
+	ofono-props.$(OBJEXT)
 modemd_OBJECTS = $(am_modemd_OBJECTS)
 modemd_DEPENDENCIES = $(am__DEPENDENCIES_2)
 DEFAULT_INCLUDES = -I.@am__isrc@
@@ -240,7 +242,10 @@ exp3_SOURCES = experiment3.c gio_gpsd.h
 exp3_LDADD = $(LDADD) -lm
 geosave_SOURCES = geosave.c
 geosave_LDADD = $(LDADD) -lm
-modemd_SOURCES = modemd.c modem_power.c modem_power.h
+modemd_SOURCES = modemd.c privdata.h modem_power.c modem_power.h \
+		 leds.c leds.h connman.c connman.h contexts.c \
+		 contexts.h ofono-props.c ofono-props.h
+
 modemd_LDADD = $(LDADD) -lm
 all: all-am
 
@@ -354,12 +359,16 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/connman.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/contexts.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/exp1-experiment1.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/exp2-experiment2.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/experiment3.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/geosave.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/leds.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/modem_power.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/modemd.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ofono-props.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<

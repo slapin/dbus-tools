@@ -17,7 +17,9 @@ exp3_SOURCES = experiment3.c gio_gpsd.h
 exp3_LDADD = $(LDADD) -lm
 geosave_SOURCES = geosave.c
 geosave_LDADD = $(LDADD) -lm
-modemd_SOURCES = modemd.c modem_power.c modem_power.h
+modemd_SOURCES = modemd.c privdata.h modem_power.c modem_power.h \
+		 leds.c leds.h connman.c connman.h contexts.c \
+		 contexts.h ofono-props.c ofono-props.h
 modemd_LDADD = $(LDADD) -lm
 
 #exp1: experiment1.o
