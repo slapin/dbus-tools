@@ -12,6 +12,13 @@
 #define OFONO_NETREG_INTERFACE OFONO_SERVICE ".NetworkRegistration"
 #define OFONO_CONNMAN_INTERFACE OFONO_SERVICE ".ConnectionManager"
 #define OFONO_CONTEXT_INTERFACE OFONO_SERVICE ".ConnectionContext"
+#define OFONO_VOICECALL_INTERFACE OFONO_SERVICE ".VoiceCallManager"
+
+enum modem_states {
+	MODEM_INIT,
+	MODEM_CONNMAN,
+	MODEM_GPRS,
+};
 
 struct privdata {
 	GDBusProxy *mgr;
@@ -26,6 +33,13 @@ struct privdata {
 	int gprs_attached;
 	int gprs_powered;
 	int context_active;
+	int ip_configured;
+
+	/* Watchdog field */
+	int failcount;
+
+	/* State */
+	enum modem_states state;
 };
 struct privdata modemdata;
 
@@ -153,6 +167,62 @@ static void modem_power_off(void)
 	power_write(0);
 }
 
+const char *led_path = "/sys/class/leds/crux:yellow";
+const char *led_trigger = "trigger";
+const char *led_brightness = "brightness";
+const char *led_hb = "heartbeat";
+const char *led_tm = "timer";
+const char *led_tm_on = "delay_on";
+const char *led_tm_off = "delay_off";
+
+static void set_led_trigger_heartbeat(void)
+{
+	char led[128];
+	int fd;
+	snprintf(led, sizeof(led), "%s/%s", led_path, led_trigger);
+	fd = open(led, O_WRONLY);
+	write(fd, led_hb, strlen(led_hb));
+	close(fd);
+}
+
+static void set_led_trigger_timer(int delay_on, int delay_off)
+{
+	char led[128];
+	int fd;
+	snprintf(led, sizeof(led), "%s/%s", led_path, led_trigger);
+	fd = open(led, O_WRONLY);
+	write(fd, led_tm, strlen(led_tm));
+	close(fd);
+	snprintf(led, sizeof(led), "%s/%s", led_path, led_tm_on);
+	fd = open(led, O_WRONLY);
+	snprintf(led, sizeof(led), "%d", delay_on);
+	write(fd, led, strlen(led));
+	close(fd);
+	snprintf(led, sizeof(led), "%s/%s", led_path, led_tm_off);
+	fd = open(led, O_WRONLY);
+	snprintf(led, sizeof(led), "%d", delay_off);
+	write(fd, led, strlen(led));
+	close(fd);
+}
+
+static void set_led_state(struct privdata *data)
+{
+	static int oldstate = -1;
+	if (oldstate == data->state)
+		return;
+	switch(data->state) {
+		case MODEM_INIT:
+			set_led_trigger_heartbeat();
+			break;
+		case MODEM_CONNMAN:
+			set_led_trigger_timer(600, 400);
+			break;
+		case MODEM_GPRS:
+			set_led_trigger_timer(200, 100);
+			break;
+	}
+}
+
 static GVariant *get_proxy_props(GDBusProxy *proxy)
 {
 	GError *err = NULL;
@@ -219,24 +289,6 @@ static void set_proxy_property(GDBusProxy *proxy,
 		g_print("value type: %s\n",
 			g_variant_get_type_string(retv));
 }
-static GVariant *get_proxy_property(GDBusProxy *proxy,
-				const char *prop)
-{
-	GError *err = NULL;
-	GVariant *retv;
-	retv = g_dbus_proxy_call_sync(proxy, "GetProperty",
-		 g_variant_new("s", prop),
-		 G_DBUS_CALL_FLAGS_NONE, 120000000, NULL, &err);
-	if (err) {
-		g_warning("Can't get prop %s\n", prop);
-		check_gdbus_error("GetProperty", err);
-		return NULL;
-	}
-	if (retv)
-		g_print("value type: %s\n",
-			g_variant_get_type_string(retv));
-	return retv;
-}
 struct ip_settings {
 	char interface[16];
 	char address[16];
@@ -259,6 +311,18 @@ static void do_ipv4_config(void)
 	g_print("IPv4 command: %s\n", cmdbuf);
 	system(cmdbuf);
 }
+static void do_ip_down(void)
+{
+	char cmdbuf[128];
+	if (strlen(ipv4.interface) == 0)
+		return;
+	else {
+		snprintf(cmdbuf, sizeof(cmdbuf), "/sbin/ifconfig %s down",
+			ipv4.interface);
+		system(cmdbuf);
+	}
+}
+
 static void do_ipv6_config(void)
 {
 }
@@ -301,6 +365,10 @@ static void check_context_prop(struct privdata *data, const char *key, GVariant 
 		gboolean v;
 		g_variant_get(value, "b", &v);
 		data->context_active = v;
+		if (!data->context_active) {
+			do_ip_down();
+			data->ip_configured = 0;
+		}
 	} else if (g_strcmp0(key, "Settings") == 0) {
 		GVariantIter *iter;
 		const char *k;
@@ -309,7 +377,11 @@ static void check_context_prop(struct privdata *data, const char *key, GVariant 
 		while (g_variant_iter_loop (iter, "{sv}", &k, &v)) {
 			check_ip_settings(data, k, v);
 		}
-		do_ipv4_config();
+		if (data->context_active && !data->ip_configured) {
+			do_ipv4_config();
+			data->state = MODEM_GPRS;
+			data->ip_configured = 1;
+		}
 	} else if (g_strcmp0(key, "IPv6.Settings") == 0) {
 		GVariantIter *iter;
 		const char *k;
@@ -318,7 +390,8 @@ static void check_context_prop(struct privdata *data, const char *key, GVariant 
 		while (g_variant_iter_loop (iter, "{sv}", &k, &v)) {
 			check_ipv6_settings(data, k, v);
 		}
-		do_ipv6_config();
+		if (data->context_active)
+			do_ipv6_config();
 	}
 }
 static void context_signal_cb(GDBusProxy *context, gchar *sender_name,
@@ -398,12 +471,19 @@ static void check_connman_prop(struct privdata *data, const char *key, GVariant 
 		gboolean val;
 		g_variant_get(value, "b", &val);
 		data->gprs_attached = val;
-		if (data->gprs_attached)
+		if (data->gprs_attached) {
 			get_connection_contexts(data);
+			data->state = MODEM_CONNMAN;
+		}
 	} else if (g_strcmp0(key, "Powered") == 0) {
 		gboolean val;
 		g_variant_get(value, "b", &val);
 		data->gprs_powered = val;
+		if (!data->gprs_powered) {
+			data->gprs_attached = 0;
+			data->context_active = 0;
+			data->state = MODEM_INIT;
+		}
 	}
 }
 
@@ -514,7 +594,7 @@ static void online_modem(GDBusProxy *proxy, struct privdata *data)
 
 static void check_interfaces(struct privdata *data, const char *iface)
 {
-	int have_connman = 0;
+	int have_connman = data->have_connman;
 	if (g_strcmp0(iface, OFONO_NETREG_INTERFACE) == 0)
 		netreg_stuff(data);
 	else if (g_strcmp0(iface, OFONO_CONNMAN_INTERFACE) == 0)
@@ -541,6 +621,8 @@ static void check_modem_property(struct privdata *data, const char *key, GVarian
 		g_variant_get(value, "as", &iter);
 		while (g_variant_iter_loop (iter, "s", &v)) {
 			g_print("Interface: %s\n", v);
+			if (g_strcmp0(v, OFONO_CONNMAN_INTERFACE) == 0)
+				g_print("CONNMAN\n");
 			check_interfaces(data, v);
 		}
 		g_variant_iter_free(iter);
@@ -605,17 +687,92 @@ static void manager_signal_cb(GDBusProxy *mgr, gchar *sender_name,
 		modem_power_off();
 	}
 }
-int main()
+
+static gboolean check_modem_state(gpointer data)
+{
+	struct privdata *priv = (struct privdata *)data;
+#if 0
+	get_process_props(priv->modem, priv, check_modem_property);
+#endif
+	set_led_state(priv);
+	g_print("registered: %d\n", priv->registered);
+	g_print("have_connman: %d\n", priv->have_connman);
+	g_print("failcount: %d\n", priv->failcount);
+	g_print("gprs_attached: %d\n", priv->gprs_attached);
+	return TRUE;
+}
+static gboolean check_connman_powered(gpointer data)
+{
+	struct privdata *priv = (struct privdata *)data;
+	int power_on = 0;
+	if (!priv->have_connman)
+		priv->ip_configured = 0;
+
+	if (priv->have_connman && (!priv->gprs_attached || !priv->context_active)) {
+		priv->ip_configured = 0;
+		get_process_props(priv->connman, data, check_connman_prop);
+	}
+	if (priv->gprs_attached && !priv->context_active) {
+		priv->ip_configured = 0;
+		get_connection_contexts(priv);
+	}
+	if (!priv->gprs_powered) {
+		priv->ip_configured = 0;
+		set_proxy_property(priv->connman, "Powered", g_variant_new_boolean(TRUE));
+	}
+	if (priv->context_active && !priv->ip_configured) {
+		do_ipv4_config();
+		do_ipv6_config();
+		priv->state = MODEM_GPRS;
+		priv->ip_configured = 1;
+	}
+out:
+	return TRUE;
+}
+
+static void add_call(GDBusConnection *connection,
+		       const gchar *sender_name,
+		       const gchar *object_path,
+		       const gchar *interface_name,
+		       const gchar *signal_name,
+		       GVariant *parameters,
+		       gpointer userdata)
+{
+	g_print("AddCall: %s\n", g_variant_get_type_string(parameters));
+}
+
+static void remove_call(GDBusConnection *connection,
+		       const gchar *sender_name,
+		       const gchar *object_path,
+		       const gchar *interface_name,
+		       const gchar *signal_name,
+		       GVariant *parameters,
+		       gpointer userdata)
+{
+	g_print("RemoveCall: %s\n", g_variant_get_type_string(parameters));
+}
+
+
+int main(int argc, char *argv[])
 {
 	GError *err = NULL;
 	struct privdata *priv = &modemdata;
 	GVariant *modems;
 	char *obj_path;
 	GVariantIter *iter;
+	GDBusConnection *conn;
 	g_type_init();
 	gpio_init();
+	priv->state = MODEM_INIT;
 	loop = g_main_loop_new(NULL, FALSE);
-	priv->mgr = g_dbus_proxy_new_for_bus_sync(G_BUS_TYPE_SYSTEM,
+	conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
+	if (!conn) {
+		g_printerr("Error connecting to D-Bus: %s\n", err->message);
+		g_error_free(err);
+		return 1;
+	}
+	err = NULL;
+	priv->mgr = g_dbus_proxy_new_sync(conn,
 			G_DBUS_PROXY_FLAGS_NONE,
 			NULL,
 			OFONO_SERVICE,
@@ -640,7 +797,13 @@ int main()
 	}
 	g_variant_iter_free(iter);
 	g_variant_unref(modems);
-//	g_timeout_add_seconds(1, check_modem_attach, priv);
+	g_timeout_add_seconds(3, check_modem_state, priv);
+	g_timeout_add_seconds(6, check_connman_powered, priv);
+
+	g_dbus_connection_signal_subscribe(conn, NULL, OFONO_VOICECALL_INTERFACE, "CallAdded", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE,
+		add_call, priv, NULL);
+	g_dbus_connection_signal_subscribe(conn, NULL, OFONO_VOICECALL_INTERFACE, "CallRemoved", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE,
+		remove_call, priv, NULL);
 	
 	g_main_loop_run(loop);
 	return 0;
