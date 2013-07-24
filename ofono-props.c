@@ -50,22 +50,33 @@ void get_process_props(GDBusProxy *proxy, struct privdata *data,
 	g_variant_unref(props);
 }
 
-void set_proxy_property(GDBusProxy *proxy,
+static GVariant *_set_proxy_property(GDBusProxy *proxy,
+				const char *prop,
+				GVariant *val,
+				GError **err)
+{
+	GVariant *retv = NULL;
+	retv = g_dbus_proxy_call_sync(proxy, "SetProperty",
+		 g_variant_new("(sv)", prop, val),
+		 G_DBUS_CALL_FLAGS_NONE, 120000000, NULL, err);
+	return retv;
+}
+int set_proxy_property(GDBusProxy *proxy,
 				const char *prop,
 				GVariant *val)
 {
 	GError *err = NULL;
 	GVariant *retv;
-	retv = g_dbus_proxy_call_sync(proxy, "SetProperty",
-		 g_variant_new("(sv)", prop, val),
-		 G_DBUS_CALL_FLAGS_NONE, 120000000, NULL, &err);
+	retv = _set_proxy_property(proxy, prop, val, &err);
 	if (err) {
 		g_warning("Can't set prop %s\n", prop);
 		check_gdbus_error("SetProperty", err);
-		return;
+		return -1;
 	}
 	if (retv)
-		g_print("value type: %s\n",
+		g_print("set %s: return value type: %s\n",
+			prop,
 			g_variant_get_type_string(retv));
+	return 0;
 }
 

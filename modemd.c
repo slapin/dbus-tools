@@ -11,10 +11,34 @@
 #include "contexts.h"
 #include "modemd.h"
 #include "ofono-props.h"
+#include "debug.h"
 
 struct privdata modemdata;
 
 static GMainLoop *loop = NULL;
+static void lockdown_modem(GDBusProxy *proxy, int r)
+{
+	int tries = 10, g;
+	do {
+		g = set_proxy_property(proxy, "Lockdown",
+			g_variant_new_boolean((r) ? TRUE: FALSE));
+		if (g)
+			g_usleep(3000000);
+	} while (g && tries--);
+
+}
+
+static void recover_modem(GDBusProxy *proxy)
+{
+	lockdown_modem(proxy, 1);
+	modem_power_off();
+	g_usleep(5000000);
+	modem_power_on();
+	g_usleep(10000000);
+	lockdown_modem(proxy, 0);
+	g_usleep(10000000);
+}
+
 static void check_netreg_status(struct privdata *data, const char *status)
 {
 	if (!g_strcmp0(status, "registered"))
@@ -26,11 +50,11 @@ static void check_netreg_status(struct privdata *data, const char *status)
 static void check_netreg_property(struct privdata *data, const char *key, GVariant *value)
 {
 	const char *val;
-	g_print("value type: %s\n",
+	d_info("value type: %s\n",
 		g_variant_get_type_string(value));
 	if (g_strcmp0(key, "Status") == 0) {
 		g_variant_get(value, "s", &val);
-		g_print("value: %s\n", val);
+		d_info("value: %s\n", val);
 		check_netreg_status(data, val);
 	}
 }
@@ -44,7 +68,7 @@ static void netreg_signal_cb(GDBusProxy *netreg, gchar *sender_name,
 	struct privdata *priv = data;
 	if (g_strcmp0(signal_name, "PropertyChanged") == 0) {
 		g_variant_get(parameters, "(sv)", &key, &value);
-		g_print("netreg property changed: %s\n", key);
+		d_info("netreg property changed: %s\n", key);
 		check_netreg_property(priv, key, value);
 		g_variant_unref(value);
 	}
@@ -71,61 +95,87 @@ static void netreg_stuff(struct privdata *data)
 
 static void power_modem(GDBusProxy *proxy, struct privdata *data)
 {
-	g_print("modem power on\n");
-	set_proxy_property(proxy, "Powered", g_variant_new_boolean(TRUE));
-	g_print("done\n");
+	int att = 10;
+	d_info("modem power on\n");
+	do {
+		int tries = 10, r;
+		do {
+			r = set_proxy_property(proxy, "Powered", g_variant_new_boolean(TRUE));
+			if (r)
+				g_usleep(2000000);
+		} while (r && tries--);
+		if (!tries)
+			recover_modem(proxy);
+		else
+			break;
+	} while (att--);
+	if (!att) {
+		modem_power_off();
+		/* We assume here that ofono will be restarted in this case */
+		system("pkill ofonod"); /* FIXME */
+		/* And we'll be restarted too */
+		g_main_loop_quit(loop);
+	}
+	d_debug("done\n");
 }
 static void online_modem(GDBusProxy *proxy, struct privdata *data)
 {
-	g_print("modem power on\n");
+	d_info("modem online\n");
 	set_proxy_property(proxy, "Online", g_variant_new_boolean(TRUE));
-	g_print("done\n");
+	d_debug("done\n");
 }
 
-static void check_interfaces(struct privdata *data, const char *iface)
+static struct have_ifaces {
+	int have_connman;
+	int have_voice;
+	int have_netreg;
+};
+static void check_if(char *name, char *pcmp, int *val)
 {
-	int have_connman = data->have_connman;
-	if (g_strcmp0(iface, OFONO_NETREG_INTERFACE) == 0)
-		netreg_stuff(data);
-	else if (g_strcmp0(iface, OFONO_CONNMAN_INTERFACE) == 0)
-		have_connman = 1;
-	data->have_connman = have_connman;
-	if (have_connman)
-		connman_stuff(data);
+	if (g_strcmp0(name, pcmp) == 0)
+		*val = 1;
 }
-
 static void check_modem_property(struct privdata *data, const char *key, GVariant *value)
 {
-	g_print("value type: %s\n",
+	d_debug("value type: %s\n",
 		g_variant_get_type_string(value));
 
 	if (g_strcmp0(key, "Powered") == 0) {
 		g_variant_get(value, "b", &data->modem_powered);
-		g_print("value data: %d\n", data->modem_powered);
+		d_debug("value data: %d\n", data->modem_powered);
 	} else if (g_strcmp0(key, "Online") == 0) {
 		g_variant_get(value, "b", &data->modem_online);
-		g_print("value data: %d\n", data->modem_online);
+		d_debug("value data: %d\n", data->modem_online);
 	} else if (g_strcmp0(key, "Interfaces") == 0) {
 		GVariantIter *iter;
 		char *v;
+		struct have_ifaces hif;
+		memset(&hif, 0, sizeof(hif));
 		g_variant_get(value, "as", &iter);
 		while (g_variant_iter_loop (iter, "s", &v)) {
-			g_print("Interface: %s\n", v);
+			d_info("Interface: %s\n", v);
 			if (g_strcmp0(v, OFONO_CONNMAN_INTERFACE) == 0)
-				g_print("CONNMAN\n");
-			check_interfaces(data, v);
+				d_debug("CONNMAN\n");
+			check_if(v, OFONO_CONNMAN_INTERFACE, &hif.have_connman);
+			check_if(v, OFONO_VOICECALL_INTERFACE, &hif.have_voice);
+			check_if(v, OFONO_NETREG_INTERFACE, &hif.have_netreg);
 		}
+		data->have_connman = hif.have_connman;
+		if (hif.have_netreg)
+			netreg_stuff(data);
+		if (hif.have_connman)
+			connman_stuff(data);
 		g_variant_iter_free(iter);
 	}
 }
 static void set_properties(GDBusProxy *proxy, struct privdata *data)
 {
-	g_print("setting props\n");
+	d_debug("setting props\n");
 	if (!data->modem_powered)
 		power_modem(proxy, data);
 	if (!data->modem_online && data->modem_powered)
 		online_modem(proxy, data);
-	g_print("all done\n");
+	d_debug("all done\n");
 }
 
 static void modem_obj_cb(GDBusProxy *proxy, gchar *sender_name,
@@ -137,7 +187,7 @@ static void modem_obj_cb(GDBusProxy *proxy, gchar *sender_name,
 	struct privdata *priv = data;
 	if (g_strcmp0(signal_name, "PropertyChanged") == 0) {
 		g_variant_get(parameters, "(sv)", &key, &value);
-		g_print("modem property changed: %s\n", key);
+		d_info("modem property changed: %s\n", key);
 		check_modem_property(priv, key, value);
 		g_variant_unref(value);
 	}
@@ -165,15 +215,14 @@ static void manager_signal_cb(GDBusProxy *mgr, gchar *sender_name,
 			      gchar *signal_name, GVariant *parameters,
 			      gpointer data)
 {
-	struct privdata *priv = data;
 	const char *obj_path;
 	if (g_strcmp0 (signal_name, "ModemAdded") == 0) {
 		g_variant_get (parameters, "(oa{sv})", &obj_path, NULL);
-		g_print("Modem added: %s\n", obj_path);
+		d_info("Modem added: %s\n", obj_path);
 		enable_modem(data, obj_path);
 	} else if (g_strcmp0 (signal_name, "ModemRemoved") == 0) {
 		g_variant_get (parameters, "(o)", &obj_path);
-		g_print("Modem removed: %s\n", obj_path);
+		d_info("Modem removed: %s\n", obj_path);
 		modem_power_off();
 	}
 }
@@ -181,22 +230,23 @@ static void manager_signal_cb(GDBusProxy *mgr, gchar *sender_name,
 static gboolean check_modem_state(gpointer data)
 {
 	struct privdata *priv = (struct privdata *)data;
-#if 0
-	get_process_props(priv->modem, priv, check_modem_property);
-#endif
 	set_led_state(priv);
-	g_print("registered: %d\n", priv->registered);
-	g_print("have_connman: %d\n", priv->have_connman);
-	g_print("failcount: %d\n", priv->failcount);
-	g_print("gprs_attached: %d\n", priv->gprs_attached);
+	d_info("registered: %d\n", priv->registered);
+	d_info("have_connman: %d\n", priv->have_connman);
+	d_info("failcount: %d\n", priv->failcount);
+	d_info("gprs_attached: %d\n", priv->gprs_attached);
 	return TRUE;
 }
 static gboolean check_connman_powered(gpointer data)
 {
 	struct privdata *priv = (struct privdata *)data;
-	int power_on = 0;
 	if (!priv->have_connman)
 		priv->ip_configured = 0;
+	if (!priv->connman) {
+		priv->have_connman = 0;
+		priv->gprs_attached = 0;
+		priv->gprs_powered = 0;
+	}
 
 	if (priv->have_connman && (!priv->gprs_attached || !priv->context_active)) {
 		priv->ip_configured = 0;
@@ -206,7 +256,7 @@ static gboolean check_connman_powered(gpointer data)
 		priv->ip_configured = 0;
 		get_connection_contexts(priv);
 	}
-	if (!priv->gprs_powered) {
+	if (!priv->gprs_powered && priv->have_connman) {
 		priv->ip_configured = 0;
 		set_proxy_property(priv->connman, "Powered", g_variant_new_boolean(TRUE));
 	}
@@ -216,7 +266,6 @@ static gboolean check_connman_powered(gpointer data)
 		priv->state = MODEM_GPRS;
 		priv->ip_configured = 1;
 	}
-out:
 	return TRUE;
 }
 
@@ -228,7 +277,7 @@ static void add_call(GDBusConnection *connection,
 		       GVariant *parameters,
 		       gpointer userdata)
 {
-	g_print("AddCall: %s\n", g_variant_get_type_string(parameters));
+	d_notice("AddCall: %s\n", g_variant_get_type_string(parameters));
 }
 
 static void remove_call(GDBusConnection *connection,
@@ -239,7 +288,7 @@ static void remove_call(GDBusConnection *connection,
 		       GVariant *parameters,
 		       gpointer userdata)
 {
-	g_print("RemoveCall: %s\n", g_variant_get_type_string(parameters));
+	d_notice("RemoveCall: %s\n", g_variant_get_type_string(parameters));
 }
 
 
@@ -253,6 +302,7 @@ int main(int argc, char *argv[])
 	GDBusConnection *conn;
 	g_type_init();
 	gpio_init();
+	debug_init();
 	priv->state = MODEM_INIT;
 	loop = g_main_loop_new(NULL, FALSE);
 	conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
@@ -280,7 +330,7 @@ int main(int argc, char *argv[])
 		g_error("can't get list of modems %s\n", err->message);
 	g_variant_get (modems, "(a(oa{sv}))", &iter);
 	while (g_variant_iter_loop (iter, "(oa{sv})", &obj_path, NULL)) {
-		g_print("modem: %s\n", obj_path);
+		d_info("modem: %s\n", obj_path);
 		if (!g_strcmp0(obj_path, "/sim900_0")) {
 			enable_modem(priv, obj_path);
 		}
