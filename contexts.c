@@ -47,7 +47,7 @@ static void do_ip_down(void)
 void do_ipv6_config(void)
 {
 }
-static void check_ip_settings(struct privdata *data, const char *key, GVariant *value)
+static void check_ip_settings(struct modemdata *data, const char *key, GVariant *value)
 {
 	g_print("IPv4: %s, value type: %s\n",
 		key,
@@ -71,24 +71,25 @@ static void check_ip_settings(struct privdata *data, const char *key, GVariant *
 	} else if (g_strcmp0(key, "DomainNameServers") == 0) {
 	}
 }
-static void check_ipv6_settings(struct privdata *data, const char *key, GVariant *value)
+static void check_ipv6_settings(struct modemdata *data, const char *key, GVariant *value)
 {
 	g_print("IPv6: %s, value type: %s\n",
 		key,
 		g_variant_get_type_string(value));
 }
-static void check_context_prop(struct privdata *data, const char *key, GVariant *value)
+static void check_context_prop(void *data, const char *key, GVariant *value)
 {
+	struct modemdata *modem = data;
 	g_print("context prop: %s, value type: %s\n",
 		key,
 		g_variant_get_type_string(value));
 	if (g_strcmp0(key, "Active") == 0) {
 		gboolean v;
 		g_variant_get(value, "b", &v);
-		data->context_active = v;
-		if (!data->context_active) {
+		modem->context_active = v;
+		if (!modem->context_active) {
 			do_ip_down();
-			data->ip_configured = 0;
+			modem->ip_configured = 0;
 		}
 	} else if (g_strcmp0(key, "Settings") == 0) {
 		GVariantIter *iter;
@@ -98,10 +99,10 @@ static void check_context_prop(struct privdata *data, const char *key, GVariant 
 		while (g_variant_iter_loop (iter, "{sv}", &k, &v)) {
 			check_ip_settings(data, k, v);
 		}
-		if (data->context_active && !data->ip_configured) {
+		if (modem->context_active && !modem->ip_configured) {
 			do_ipv4_config();
-			data->state = MODEM_GPRS;
-			data->ip_configured = 1;
+			modem->state = MODEM_GPRS;
+			modem->ip_configured = 1;
 		}
 	} else if (g_strcmp0(key, "IPv6.Settings") == 0) {
 		GVariantIter *iter;
@@ -109,9 +110,9 @@ static void check_context_prop(struct privdata *data, const char *key, GVariant 
 		GVariant *v;
 		g_variant_get(value, "a{sv}", &iter);
 		while (g_variant_iter_loop (iter, "{sv}", &k, &v)) {
-			check_ipv6_settings(data, k, v);
+			check_ipv6_settings(modem, k, v);
 		}
-		if (data->context_active)
+		if (modem->context_active)
 			do_ipv6_config();
 	}
 }
@@ -121,7 +122,7 @@ static void context_signal_cb(GDBusProxy *context, gchar *sender_name,
 {
 	const char *key;
 	GVariant *value;
-	struct privdata *priv = data;
+	struct modemdata *priv = data;
 	g_print("context: signal: %s\n", signal_name);
 	if (g_strcmp0(signal_name, "PropertyChanged") == 0) {
 		g_variant_get(parameters, "(sv)", &key, &value);
@@ -131,7 +132,7 @@ static void context_signal_cb(GDBusProxy *context, gchar *sender_name,
 	}
 }
 
-static void activate_context(struct privdata *data, const char *objpath)
+static void activate_context(struct modemdata *data, const char *objpath)
 {
 	GError *err = NULL;
 	data->context = g_dbus_proxy_new_for_bus_sync(G_BUS_TYPE_SYSTEM,
@@ -155,7 +156,7 @@ static void activate_context(struct privdata *data, const char *objpath)
 	}
 }
 
-void get_connection_contexts(struct privdata *data)
+void get_connection_contexts(struct modemdata *data)
 {
 	GError *err = NULL;
 	GVariantIter *iter;

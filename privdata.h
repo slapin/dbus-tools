@@ -8,11 +8,19 @@ enum modem_states {
 };
 
 struct privdata {
+	GDBusConnection *conn;
 	GDBusProxy *mgr;
+	GHashTable *modem_hash;
+	GHashTable *context_hash;
+};
+
+struct modemdata {
+	gchar *path;
 	GDBusProxy *modem;
 	GDBusProxy *netreg;
 	GDBusProxy *connman;
 	GDBusProxy *context;
+	GDBusProxy *voicecall;
 	gboolean modem_online;
 	gboolean modem_powered;
 	int registered;
@@ -22,10 +30,18 @@ struct privdata {
 	int context_active;
 	int ip_configured;
 
+	/* Events */
+	guint check_modem_id;
+	guint check_connman_id;
+	guint check_netreg_id;
+	guint check_context_id;
+
 	/* Watchdog field */
 	int failcount;
 
 	/* State */
 	enum modem_states state;
+	/* Context */
+	int active_context_counter;
 };
 #endif

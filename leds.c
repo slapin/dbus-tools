@@ -44,7 +44,7 @@ static void set_led_trigger_timer(int delay_on, int delay_off)
 	close(fd);
 }
 
-void set_led_state(struct privdata *data)
+void set_led_state(struct modemdata *data)
 {
 	static int oldstate = -1;
 	if (oldstate == data->state)

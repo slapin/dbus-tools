@@ -1,5 +1,4 @@
 #include <gio/gio.h>
-#include "privdata.h"
 #include "ofono-props.h"
 
 static void check_gdbus_error(char *what, GError *err)
@@ -25,8 +24,8 @@ static GVariant *get_proxy_props(GDBusProxy *proxy)
 	return props;
 }
 
-static void process_proplist(struct privdata *data, GVariant *props,
-			     void (*func)(struct privdata *data,
+static void process_proplist(void *data, GVariant *props,
+			     void (*func)(void *data,
 					  const char *k, GVariant *val))
 {
 	GVariantIter *iter;
@@ -40,8 +39,8 @@ static void process_proplist(struct privdata *data, GVariant *props,
 }
 
 
-void get_process_props(GDBusProxy *proxy, struct privdata *data,
-			     void (*func)(struct privdata *data,
+void get_process_props(GDBusProxy *proxy, void *data,
+			     void (*func)(void *data,
 					  const char *k, GVariant *val))
 {
 	GVariant *props = get_proxy_props(proxy);

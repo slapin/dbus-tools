@@ -9,5 +9,6 @@
 #define OFONO_CONNMAN_INTERFACE OFONO_SERVICE ".ConnectionManager"
 #define OFONO_CONTEXT_INTERFACE OFONO_SERVICE ".ConnectionContext"
 #define OFONO_VOICECALL_INTERFACE OFONO_SERVICE ".VoiceCallManager"
+void terminate_disable_modem(void);
 #endif
 

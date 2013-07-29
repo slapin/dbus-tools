@@ -5,7 +5,6 @@
 #include <math.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include "gio_gpsd.h"
 
 static GMainLoop *loop = NULL;
 struct dbconn {

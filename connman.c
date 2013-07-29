@@ -5,26 +5,42 @@
 #include "modemd.h"
 #include "ofono-props.h"
 
-void check_connman_prop(struct privdata *data, const char *key, GVariant *value)
+static gboolean check_active_context(gpointer data)
 {
+	struct modemdata *modem = data;
+	if (!modem->context_active) {
+		if (modem->active_context_counter) {
+			get_connection_contexts(modem);
+			modem->active_context_counter--;
+			return TRUE;
+		} else /* Modem stuck */
+			terminate_disable_modem();
+	}
+	return FALSE;
+}
+
+void check_connman_prop(void *data, const char *key, GVariant *value)
+{
+	struct modemdata *modem = data;
 	g_print("value type: %s\n",
 		g_variant_get_type_string(value));
 	if (g_strcmp0(key, "Attached") == 0) {
 		gboolean val;
 		g_variant_get(value, "b", &val);
-		data->gprs_attached = val;
-		if (data->gprs_attached) {
-			get_connection_contexts(data);
-			data->state = MODEM_CONNMAN;
+		modem->gprs_attached = val;
+		if (modem->gprs_attached) {
+			get_connection_contexts(modem);
+			modem->state = MODEM_CONNMAN;
+			g_timeout_add_seconds(15, check_active_context, modem);
 		}
 	} else if (g_strcmp0(key, "Powered") == 0) {
 		gboolean val;
 		g_variant_get(value, "b", &val);
-		data->gprs_powered = val;
-		if (!data->gprs_powered) {
-			data->gprs_attached = 0;
-			data->context_active = 0;
-			data->state = MODEM_INIT;
+		modem->gprs_powered = val;
+		if (!modem->gprs_powered) {
+			modem->gprs_attached = 0;
+			modem->context_active = 0;
+			modem->state = MODEM_INIT;
 		}
 	}
 }
@@ -35,7 +51,7 @@ static void connman_signal_cb(GDBusProxy *connman, gchar *sender_name,
 {
 	const char *key;
 	GVariant *value;
-	struct privdata *priv = data;
+	struct modemdata *priv = data;
 	if (g_strcmp0(signal_name, "PropertyChanged") == 0) {
 		g_variant_get(parameters, "(sv)", &key, &value);
 		g_print("connman property changed: %s\n", key);
@@ -44,14 +60,14 @@ static void connman_signal_cb(GDBusProxy *connman, gchar *sender_name,
 	}
 }
 
-void connman_stuff(struct privdata *data)
+void connman_stuff(struct modemdata *data)
 {
 	GError *err = NULL;
 	data->connman = g_dbus_proxy_new_for_bus_sync(G_BUS_TYPE_SYSTEM,
 			G_DBUS_PROXY_FLAGS_NONE,
 			NULL,
 			OFONO_SERVICE,
-			"/sim900_0", /* FIXME */
+			data->path, /* FIXME */
 			OFONO_CONNMAN_INTERFACE,
 			NULL, &err);
 	if (err) {

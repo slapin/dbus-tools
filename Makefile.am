@@ -13,33 +13,13 @@ exp1_LDADD = $(DBUS_LIBS)
 exp2_SOURCES = experiment2.c
 exp2_CPPFLAGS = $(DBUS_CFLAGS)
 exp2_LDADD = $(DBUS_LIBS)
-exp3_SOURCES = experiment3.c gio_gpsd.h
+exp3_SOURCES = experiment3.c
 exp3_LDADD = $(LDADD) -lm
 geosave_SOURCES = geosave.c
 geosave_LDADD = $(LDADD) -lm
 modemd_SOURCES = modemd.c privdata.h modem_power.c modem_power.h \
 		 leds.c leds.h connman.c connman.h contexts.c \
 		 contexts.h ofono-props.c ofono-props.h debug.c \
-		 debug.h
+		 debug.h voicecall.c voicecall.h
 modemd_LDADD = $(LDADD) -lm
-
-#exp1: experiment1.o
-#	$(CC) $(LDFLAGS) -o $@ $< $(LIBS)
-
-
-#exp2: experiment2.o
-#	$(CC) $(LDFLAGS) -o $@ $< $(LIBS)
-
-#geowriter: geowriter.o
-#	$(CC) $(LDFLAGS) -o $@ $< $(LIBS)
-
-#exp3: experiment3.o gio_gpsd.o gio_gpsd.h
-#	$(CC) $(LDFLAGS) -o $@ $< gio_gpsd.o $(LIBS) -lsqlite3 -lm
-
-gio_gpsd.c gio_gpsd.h: org.gpsd.xml
-	gdbus-codegen --generate-c-code gio_gpsd --c-namespace gpsd $<
-
-gio_database.c gio_database.h: ru.itetra.Database.xml
-	gdbus-codegen --generate-c-code gio_database --c-namespace gio_db $<
-
 
