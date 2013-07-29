@@ -114,18 +114,15 @@ static void power_modem(GDBusProxy *proxy, struct modemdata *data)
 		else
 			break;
 	} while (att--);
-	if (!att) {
-		modem_power_off();
-		/* We assume here that ofono will be restarted in this case */
-		system("pkill ofonod"); /* FIXME */
-		/* And we'll be restarted too */
-		g_main_loop_quit(loop);
-	}
-	d_debug("done\n");
+	if (!att)
+		terminate_disable_modem();
+	else
+		d_debug("done\n");
 }
 
 void terminate_disable_modem(void)
 {
+	d_info("switching modem off and terminating\n");
 	modem_power_off();
 	/* We assume here that ofono will be restarted in this case */
 	system("pkill ofonod"); /* FIXME */
@@ -186,16 +183,11 @@ static void check_modem_property(void *data, const char *key, GVariant *value)
 static gboolean check_network_registration(gpointer data)
 {
 	struct modemdata *modem = data;
-	if (!modem->registered) {
+	if (!modem->registered)
 		/* Restart ofonod as we run too
 		   long without registration
 		*/
-		d_info("no network registration for too long, exiting");
-		system("pkill ofonod");
-		/* Quit */
-		modem_power_off();
-		g_main_loop_quit(loop);
-	}
+		terminate_disable_modem();
 	return FALSE;
 }
 
