@@ -261,9 +261,6 @@ static gboolean check_connman_powered(gpointer data)
 	}
 	if (modem->gprs_attached && !modem->context_active) {
 		modem->ip_configured = 0;
-#if 0
-		get_connection_contexts(modem);
-#endif
 	}
 	if (!modem->gprs_powered && modem->have_connman) {
 		modem->ip_configured = 0;

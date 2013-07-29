@@ -29,9 +29,12 @@ void check_connman_prop(void *data, const char *key, GVariant *value)
 		g_variant_get(value, "b", &val);
 		modem->gprs_attached = val;
 		if (modem->gprs_attached) {
-			get_connection_contexts(modem);
-			modem->state = MODEM_CONNMAN;
-			g_timeout_add_seconds(15, check_active_context, modem);
+			if (!modem->active_context_counter) {
+				modem->active_context_counter = 10;
+				get_connection_contexts(modem);
+				modem->state = MODEM_CONNMAN;
+				g_timeout_add_seconds(15, check_active_context, modem);
+			}
 		}
 	} else if (g_strcmp0(key, "Powered") == 0) {
 		gboolean val;
