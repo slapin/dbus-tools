@@ -412,12 +412,16 @@ static void gprs_stall_control(GDBusConnection *connection,
 	struct privdata *priv = userdata;
 	priv->fatal_count++;
 
-	if (priv->fatal_count > 3)
+	d_info("fatal count: %d\n", priv->fatal_count);
+	if (priv->fatal_count > 3) {
+		d_notice("terminating: excessive client failures\n");
 		terminate_disable_modem();
+	}
 }
 static gboolean reset_fatal(gpointer data)
 {
 	struct privdata *priv = data;
+	d_info("resetting fatal counter\n");
 	priv->fatal_count = 0;
 	return TRUE;
 }
