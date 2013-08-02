@@ -12,6 +12,7 @@ struct privdata {
 	GDBusProxy *mgr;
 	GHashTable *modem_hash;
 	GHashTable *context_hash;
+	int fatal_count;
 };
 
 struct modemdata {

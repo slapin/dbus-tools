@@ -390,6 +390,37 @@ static void ofono_disconnect(GDBusConnection *conn,
 }
 
 static guint watch;
+static void green_led_control(GDBusConnection *connection,
+		       const gchar *sender_name,
+		       const gchar *object_path,
+		       const gchar *interface_name,
+		       const gchar *signal_name,
+		       GVariant *parameters,
+		       gpointer userdata)
+{
+	/* Enable/disable green LED here */
+}
+
+static void gprs_stall_control(GDBusConnection *connection,
+		       const gchar *sender_name,
+		       const gchar *object_path,
+		       const gchar *interface_name,
+		       const gchar *signal_name,
+		       GVariant *parameters,
+		       gpointer userdata)
+{
+	struct privdata *priv = userdata;
+	priv->fatal_count++;
+
+	if (priv->fatal_count > 4)
+		terminate_disable_modem();
+}
+static gboolean reset_fatal(gpointer data)
+{
+	struct privdata *priv = data;
+	priv->fatal_count = 0;
+	return TRUE;
+}
 int main(int argc, char *argv[])
 {
 	struct privdata *priv = &modemdata;
@@ -411,6 +442,12 @@ int main(int argc, char *argv[])
 	if (!watch)
 		return 1;
 
+	
+	g_dbus_connection_signal_subscribe(priv->conn, NULL, "ru.itetra.Connectivity", "status", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE,
+		green_led_control, priv, NULL);
+	g_dbus_connection_signal_subscribe(priv->conn, NULL, "ru.itetra.Connectivity", "fatal", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE,
+		gprs_stall_control, priv, NULL);
+	g_timeout_add_seconds(120, reset_fatal, priv);
 	g_main_loop_run(loop);
 	return 0;
 }
