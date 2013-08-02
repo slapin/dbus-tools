@@ -412,7 +412,7 @@ static void gprs_stall_control(GDBusConnection *connection,
 	struct privdata *priv = userdata;
 	priv->fatal_count++;
 
-	if (priv->fatal_count > 4)
+	if (priv->fatal_count > 3)
 		terminate_disable_modem();
 }
 static gboolean reset_fatal(gpointer data)
@@ -447,7 +447,7 @@ int main(int argc, char *argv[])
 		green_led_control, priv, NULL);
 	g_dbus_connection_signal_subscribe(priv->conn, NULL, "ru.itetra.Connectivity", "fatal", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE,
 		gprs_stall_control, priv, NULL);
-	g_timeout_add_seconds(120, reset_fatal, priv);
+	g_timeout_add_seconds(480, reset_fatal, priv);
 	g_main_loop_run(loop);
 	return 0;
 }
