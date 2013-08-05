@@ -34,6 +34,7 @@ void check_connman_prop(void *data, const char *key, GVariant *value)
 				get_connection_contexts(modem);
 				modem->state = MODEM_CONNMAN;
 				g_timeout_add_seconds(15, check_active_context, modem);
+				g_source_remove(modem->connman_attach_id);
 			}
 		}
 	} else if (g_strcmp0(key, "Powered") == 0) {
@@ -63,6 +64,14 @@ static void connman_signal_cb(GDBusProxy *connman, gchar *sender_name,
 	}
 }
 
+gboolean check_connman_attached(gpointer data)
+{
+	struct modemdata *priv = data;
+	if (!priv->gprs_attached)
+		terminate_disable_modem();
+	return FALSE;
+}
+
 void connman_stuff(struct modemdata *data)
 {
 	GError *err = NULL;
@@ -80,5 +89,6 @@ void connman_stuff(struct modemdata *data)
 	}
 	g_signal_connect(data->connman, "g-signal", G_CALLBACK(connman_signal_cb), data);
 	get_process_props(data->connman, data, check_connman_prop);
+	data->connman_attach_id = g_timeout_add_seconds(10, check_connman_attached, data);
 }
 
