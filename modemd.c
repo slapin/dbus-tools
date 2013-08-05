@@ -225,10 +225,11 @@ static gboolean check_modem_state(gpointer data)
 {
 	struct modemdata *priv = (struct modemdata *)data;
 	set_led_state(priv);
-	d_info("registered: %d\n", priv->registered);
-	d_info("have_connman: %d\n", priv->have_connman);
-	d_info("failcount: %d\n", priv->failcount);
-	d_info("gprs_attached: %d\n", priv->gprs_attached);
+	d_info("registered: %d have_connman: %d failcount: %d gprs_attached: %d\n",
+		priv->registered,
+		priv->have_connman,
+		priv->failcount,
+		priv->gprs_attached);
 	return TRUE;
 }
 static gboolean check_connman_powered(gpointer data)
