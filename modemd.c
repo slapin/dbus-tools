@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <termios.h>
 
 #include "privdata.h"
 #include "modem_power.h"
@@ -17,6 +18,78 @@
 struct privdata modemdata;
 
 static GMainLoop *loop = NULL;
+
+const char *gsmledfile = "/sys/class/leds/crux:yellow/brightness";
+const char *clientledfile = "/sys/class/leds/crux:yellow/brightness";
+const char *modemdev = "/dev/ttySAC0";
+static GOptionEntry opts[] = {
+	{"gsmstatusled", 'l', 0, G_OPTION_ARG_STRING, &gsmledfile, "path to GSM status led control file", NULL},
+	{"clientstatusled", 'c', 0, G_OPTION_ARG_STRING, &clientledfile, "path to client status led control file", NULL},
+	{"modemdev", 'm', 0, G_OPTION_ARG_STRING, &modemdev, "path to alarm input file", NULL},
+	{NULL},
+};
+
+static int cold_start = 0;
+
+static void modem_init_termios(int fd)
+{
+	struct termios tio;
+	memset(&tio, 0, sizeof(tio));
+	tio.c_iflag=0;
+	tio.c_oflag=0;
+	tio.c_cflag=CS8|CREAD|CLOCAL;
+	tio.c_lflag=0;
+	tio.c_cc[VMIN]=1;
+	tio.c_cc[VTIME]=5;
+	cfsetospeed(&tio,B115200);
+	cfsetispeed(&tio,B115200);
+	tcsetattr(fd,TCSANOW,&tio);
+}
+
+const char *modem_cmd1 = "AT\r";
+const char *modem_cmd2 = "AT+CSMS=0\r";
+const char *modem_cmd3 = "AT+CNMI=2,0,2,0,0\r";
+
+static void do_modem_command(int fd, const char *cmd)
+{
+	int cmd_done = 0;
+	guchar buf[128];
+	int c;
+	while (!cmd_done) {
+		write(fd, cmd, strlen(cmd));
+		for (c = 0; c < 5; c++) {
+			g_usleep(300000);
+			memset(buf, 0, sizeof(buf));
+			read(fd, buf, sizeof(buf) - 1);
+			if (strstr(buf, "OK")) {
+				cmd_done = 1;
+				d_info("got OK\n");
+				break;
+			}
+		}
+		g_usleep(500000);
+	}
+}
+
+static void modem_init(void)
+{
+	int fd;
+	if (!cold_start) {
+		d_info("warm start\n");
+		return;
+	}
+	fd = open(modemdev, O_RDWR | O_NONBLOCK);
+	if (fd < 0)
+		g_error("modem init fault: %s\n", modemdev);
+	modem_init_termios(fd);
+	d_info("running command: %s\n", modem_cmd1);
+	do_modem_command(fd, modem_cmd1);
+	d_info("running command: %s\n", modem_cmd2);
+	do_modem_command(fd, modem_cmd2);
+	d_info("running command: %s\n", modem_cmd3);
+	do_modem_command(fd, modem_cmd3);
+}
+
 static void lockdown_modem(GDBusProxy *proxy, int r)
 {
 	int tries = 10, g;
@@ -36,6 +109,7 @@ static void recover_modem(GDBusProxy *proxy)
 	g_usleep(5000000);
 	modem_power_on();
 	g_usleep(10000000);
+	modem_init();
 	lockdown_modem(proxy, 0);
 	g_usleep(10000000);
 }
@@ -282,6 +356,7 @@ static void add_modem(struct privdata *priv, const char *path)
 	modem->path = g_strdup(path);
 	g_hash_table_insert(priv->modem_hash, g_strdup(path), modem);
 	modem_power_on();
+	modem_init();
 	modem->state = MODEM_INIT;
 	modem->modem = g_dbus_proxy_new_for_bus_sync(G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_NONE,
 				  NULL, OFONO_SERVICE, path, OFONO_MODEM_INTERFACE,
@@ -343,7 +418,6 @@ static void ofono_connect(GDBusConnection *conn,
 	GVariantIter *iter;
 	GVariant *modems;
 	char *obj_path;
-	char *modempath;
 	err = NULL;
 
 	priv->modem_hash = g_hash_table_new_full(g_str_hash, g_str_equal,
@@ -430,9 +504,17 @@ int main(int argc, char *argv[])
 {
 	struct privdata *priv = &modemdata;
 	GError *err = NULL;
+	GOptionContext *ocontext;
+
+	ocontext = g_option_context_new("- modem control tool");
+	/* Command line options stuff */
+	g_option_context_add_main_entries(ocontext, opts, "modemd");
+	if (!g_option_context_parse (ocontext, &argc, &argv, &err))
+		g_error("option parsing failed: %s\n", err->message);
 
 	g_type_init();
 	gpio_init();
+	cold_start = !modem_check_power();
 	debug_init();
 	loop = g_main_loop_new(NULL, FALSE);
 	priv->conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
