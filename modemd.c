@@ -55,6 +55,7 @@ static void do_modem_command(int fd, const char *cmd)
 	int cmd_done = 0;
 	guchar buf[128];
 	int c;
+	int timeout = 100;
 	while (!cmd_done) {
 		write(fd, cmd, strlen(cmd));
 		for (c = 0; c < 5; c++) {
@@ -67,6 +68,9 @@ static void do_modem_command(int fd, const char *cmd)
 				break;
 			}
 		}
+		timeout--;
+		if (!timeout)
+			terminate_disable_modem();
 		g_usleep(500000);
 	}
 }
