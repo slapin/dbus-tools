@@ -219,11 +219,24 @@ struct have_ifaces {
 	int have_voice;
 	int have_netreg;
 };
+
 static void check_if(char *name, char *pcmp, int *val)
 {
 	if (g_strcmp0(name, pcmp) == 0)
 		*val = 1;
 }
+
+static gboolean check_modem_connman(gpointer data)
+{
+	struct modemdata *modem = data;
+	if (!modem->have_connman)
+		/* Restart ofonod as we run too
+		   long without being online
+		*/
+		terminate_disable_modem();
+	return FALSE;
+}
+
 static void check_modem_property(void *data, const char *key, GVariant *value)
 {
 	struct modemdata *modem = data;
@@ -253,8 +266,11 @@ static void check_modem_property(void *data, const char *key, GVariant *value)
 		modem->have_connman = hif.have_connman;
 		if (hif.have_netreg)
 			netreg_stuff(data);
-		if (hif.have_connman)
+		if (hif.have_connman) {
+			d_info("have_connman: 1\n");
+			g_source_remove(modem->modem_connman_id);
 			connman_stuff(data);
+		}
 		g_variant_iter_free(iter);
 	}
 }
@@ -423,16 +439,17 @@ static void add_modem(struct privdata *priv, const char *path)
 		g_error_free(err);
 		return;
 	}
+	modem->modem_connman_id = g_timeout_add_seconds(10, check_modem_connman, modem);
+	modem->check_modem_id = g_timeout_add_seconds(3, check_modem_state, modem);
+	modem->check_connman_id = g_timeout_add_seconds(6, check_connman_powered, modem);
+	g_timeout_add_seconds(480, reset_fatal, modem);
 	g_signal_connect(modem->modem, "g-signal", G_CALLBACK (modem_obj_cb), modem);
 	get_process_props(modem->modem, modem, check_modem_property);
 	set_properties(modem->modem, modem);
-	modem->check_modem_id = g_timeout_add_seconds(3, check_modem_state, modem);
-	modem->check_connman_id = g_timeout_add_seconds(6, check_connman_powered, modem);
 	g_dbus_connection_signal_subscribe(priv->conn, NULL, "ru.itetra.Connectivity", "status", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE,
 		green_led_control, modem, NULL);
 	g_dbus_connection_signal_subscribe(priv->conn, NULL, "ru.itetra.Connectivity", "fatal", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE,
 		gprs_stall_control, modem, NULL);
-	g_timeout_add_seconds(480, reset_fatal, modem);
 }
 static void removed_modem(struct privdata *priv, const char *path)
 {

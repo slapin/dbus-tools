@@ -20,6 +20,6 @@ geosave_LDADD = $(LDADD) -lm
 modemd_SOURCES = modemd.c privdata.h modem_power.c modem_power.h \
 		 leds.c leds.h connman.c connman.h contexts.c \
 		 contexts.h ofono-props.c ofono-props.h debug.c \
-		 debug.h voicecall.c voicecall.h
+		 debug.h voicecall.c voicecall.h u-boot.c u-boot.h
 modemd_LDADD = $(LDADD) -lm
 

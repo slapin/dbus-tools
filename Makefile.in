@@ -71,7 +71,8 @@ geosave_OBJECTS = $(am_geosave_OBJECTS)
 geosave_DEPENDENCIES = $(am__DEPENDENCIES_2)
 am_modemd_OBJECTS = modemd.$(OBJEXT) modem_power.$(OBJEXT) \
 	leds.$(OBJEXT) connman.$(OBJEXT) contexts.$(OBJEXT) \
-	ofono-props.$(OBJEXT) debug.$(OBJEXT) voicecall.$(OBJEXT)
+	ofono-props.$(OBJEXT) debug.$(OBJEXT) voicecall.$(OBJEXT) \
+	u-boot.$(OBJEXT)
 modemd_OBJECTS = $(am_modemd_OBJECTS)
 modemd_DEPENDENCIES = $(am__DEPENDENCIES_2)
 DEFAULT_INCLUDES = -I.@am__isrc@
@@ -245,7 +246,7 @@ geosave_LDADD = $(LDADD) -lm
 modemd_SOURCES = modemd.c privdata.h modem_power.c modem_power.h \
 		 leds.c leds.h connman.c connman.h contexts.c \
 		 contexts.h ofono-props.c ofono-props.h debug.c \
-		 debug.h voicecall.c voicecall.h
+		 debug.h voicecall.c voicecall.h u-boot.c u-boot.h
 
 modemd_LDADD = $(LDADD) -lm
 all: all-am
@@ -371,6 +372,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/modem_power.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/modemd.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ofono-props.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/u-boot.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/voicecall.Po@am__quote@
 
 .c.o:

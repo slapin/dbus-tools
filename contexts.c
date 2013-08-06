@@ -8,6 +8,7 @@
 #include "contexts.h"
 #include "modemd.h"
 #include "ofono-props.h"
+#include "u-boot.h"
 #include "debug.h"
 static int used_context = 0;
 struct ip_settings {
@@ -183,7 +184,14 @@ static void activate_context(struct modemdata *data, const char *objpath)
 	g_signal_connect(data->context, "g-signal", G_CALLBACK(context_signal_cb), data);
 	get_process_props(data->context, data, check_context_prop);
 	if (!data->context_active) {
-		set_proxy_property(data->context, "AccessPointName", g_variant_new_string("internet"));
+		char *apn = fw_getenv("pongo_apn");
+		if (!apn)
+			apn = "internet";
+		if (strlen(apn) < 2) {
+			g_free(apn);
+			apn = "internet";
+		}
+		set_proxy_property(data->context, "AccessPointName", g_variant_new_string(apn));
 		set_proxy_property(data->context, "Active", g_variant_new_boolean(TRUE));
 	}
 }

@@ -37,6 +37,7 @@ struct modemdata {
 	guint check_context_id;
 	guint connman_attach_id;
 	guint modem_online_id;
+	guint modem_connman_id;
 
 	/* Watchdog field */
 	int failcount;
