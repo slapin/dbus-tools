@@ -2,11 +2,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
 
 #include "privdata.h"
 #include "contexts.h"
 #include "modemd.h"
 #include "ofono-props.h"
+#include "debug.h"
 static int used_context = 0;
 struct ip_settings {
 	char interface[16];
@@ -14,8 +16,23 @@ struct ip_settings {
 	char netmask[16];
 	char gateway[16];
 	char resolvers[3][16];
+	int nresolvers;
 };
 static struct ip_settings ipv4;
+
+static void save_resolv_conf(void)
+{
+	int i, fd;
+	fd = open("/var/run/resolv.conf", O_WRONLY|O_CREAT|O_TRUNC);
+	if (fd < 0)
+		return;
+	for (i = 0; i < ipv4.nresolvers; i++) {
+		char ns[64];
+		snprintf(ns, sizeof(ns), "nameserver %s\n", ipv4.resolvers[i]);
+		write(fd, ns, strlen(ns));
+	}
+	close(fd);
+}
 
 void do_ipv4_config(void)
 {
@@ -30,6 +47,7 @@ void do_ipv4_config(void)
 		snprintf(cmdbuf, sizeof(cmdbuf), "/sbin/route add default gw %s", ipv4.gateway);
 	g_print("IPv4 command: %s\n", cmdbuf);
 	system(cmdbuf);
+	save_resolv_conf();
 }
 
 static void do_ip_down(void)
@@ -69,6 +87,20 @@ static void check_ip_settings(struct modemdata *data, const char *key, GVariant 
 		g_variant_get(value, "s", &addr);
 		strncpy(ipv4.gateway, addr, sizeof(ipv4.gateway));
 	} else if (g_strcmp0(key, "DomainNameServers") == 0) {
+		GVariantIter *iter;
+		const char *v;
+		int i;
+		g_variant_get(value, "as", &iter);
+		i = 0;
+		while (g_variant_iter_loop (iter, "s", &v)) {
+			d_info("DNS: %s\n", v);
+			memset(ipv4.resolvers[i], 0, sizeof(ipv4.resolvers[i]));
+			strncpy(ipv4.resolvers[i], v, sizeof(ipv4.resolvers[i]));
+			i++;
+			if (i >= sizeof(ipv4.resolvers) / sizeof(ipv4.resolvers[0]))
+				break;
+		}
+		ipv4.nresolvers = i;
 	}
 }
 static void check_ipv6_settings(struct modemdata *data, const char *key, GVariant *value)

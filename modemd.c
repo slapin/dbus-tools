@@ -383,7 +383,7 @@ static void gprs_stall_control(GDBusConnection *connection,
 	priv->fatal_count++;
 
 	d_info("fatal count: %d\n", priv->fatal_count);
-	if (priv->fatal_count > 3) {
+	if (priv->fatal_count >= 2) {
 		d_notice("terminating: excessive client failures\n");
 		terminate_disable_modem();
 	}
