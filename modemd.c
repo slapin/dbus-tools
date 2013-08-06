@@ -19,8 +19,8 @@ struct privdata modemdata;
 
 static GMainLoop *loop = NULL;
 
-const char *gsmledfile = "/sys/class/leds/crux:yellow/brightness";
-const char *clientledfile = "/sys/class/leds/crux:yellow/brightness";
+const char *gsmledfile = "/sys/class/leds/crux:yellow";
+const char *clientledfile = "/sys/class/leds/crux:green";
 const char *modemdev = "/dev/ttySAC0";
 static GOptionEntry opts[] = {
 	{"gsmstatusled", 'l', 0, G_OPTION_ARG_STRING, &gsmledfile, "path to GSM status led control file", NULL},
@@ -61,7 +61,7 @@ static void do_modem_command(int fd, const char *cmd)
 			g_usleep(300000);
 			memset(buf, 0, sizeof(buf));
 			read(fd, buf, sizeof(buf) - 1);
-			if (strstr(buf, "OK")) {
+			if (strstr((char *)buf, "OK")) {
 				cmd_done = 1;
 				d_info("got OK\n");
 				break;
@@ -264,6 +264,16 @@ static gboolean check_network_registration(gpointer data)
 		terminate_disable_modem();
 	return FALSE;
 }
+static gboolean check_modem_online(gpointer data)
+{
+	struct modemdata *modem = data;
+	if (!modem->modem_online)
+		/* Restart ofonod as we run too
+		   long without being online
+		*/
+		terminate_disable_modem();
+	return FALSE;
+}
 
 static void set_properties(GDBusProxy *proxy, struct modemdata *data)
 {
@@ -274,8 +284,10 @@ static void set_properties(GDBusProxy *proxy, struct modemdata *data)
 			g_timeout_add_seconds(40,
 				check_network_registration, data);
 	}
-	if (!data->modem_online && data->modem_powered)
+	if (!data->modem_online && data->modem_powered) {
 		online_modem(proxy, data);
+		data->modem_online_id = g_timeout_add_seconds(120, check_modem_online, data);
+	}
 	d_debug("all done\n");
 }
 
@@ -343,6 +355,47 @@ out:
 	return TRUE;
 }
 
+static void green_led_control(GDBusConnection *connection,
+		       const gchar *sender_name,
+		       const gchar *object_path,
+		       const gchar *interface_name,
+		       const gchar *signal_name,
+		       GVariant *parameters,
+		       gpointer userdata)
+{
+	/* Enable/disable green LED here */
+	struct modemdata *priv = userdata;
+
+	g_variant_get (parameters, "(b)", &priv->cstate, NULL);
+	d_info("green led status:%d\n", priv->cstate);
+	set_cled_state(priv);
+}
+
+static void gprs_stall_control(GDBusConnection *connection,
+		       const gchar *sender_name,
+		       const gchar *object_path,
+		       const gchar *interface_name,
+		       const gchar *signal_name,
+		       GVariant *parameters,
+		       gpointer userdata)
+{
+	struct modemdata *priv = userdata;
+	priv->fatal_count++;
+
+	d_info("fatal count: %d\n", priv->fatal_count);
+	if (priv->fatal_count > 3) {
+		d_notice("terminating: excessive client failures\n");
+		terminate_disable_modem();
+	}
+}
+static gboolean reset_fatal(gpointer data)
+{
+	struct modemdata *priv = data;
+	d_info("resetting fatal counter\n");
+	priv->fatal_count = 0;
+	return TRUE;
+}
+
 
 static void add_modem(struct privdata *priv, const char *path)
 {
@@ -371,6 +424,11 @@ static void add_modem(struct privdata *priv, const char *path)
 	set_properties(modem->modem, modem);
 	modem->check_modem_id = g_timeout_add_seconds(3, check_modem_state, modem);
 	modem->check_connman_id = g_timeout_add_seconds(6, check_connman_powered, modem);
+	g_dbus_connection_signal_subscribe(priv->conn, NULL, "ru.itetra.Connectivity", "status", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE,
+		green_led_control, modem, NULL);
+	g_dbus_connection_signal_subscribe(priv->conn, NULL, "ru.itetra.Connectivity", "fatal", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE,
+		gprs_stall_control, modem, NULL);
+	g_timeout_add_seconds(480, reset_fatal, modem);
 }
 static void removed_modem(struct privdata *priv, const char *path)
 {
@@ -465,41 +523,6 @@ static void ofono_disconnect(GDBusConnection *conn,
 }
 
 static guint watch;
-static void green_led_control(GDBusConnection *connection,
-		       const gchar *sender_name,
-		       const gchar *object_path,
-		       const gchar *interface_name,
-		       const gchar *signal_name,
-		       GVariant *parameters,
-		       gpointer userdata)
-{
-	/* Enable/disable green LED here */
-}
-
-static void gprs_stall_control(GDBusConnection *connection,
-		       const gchar *sender_name,
-		       const gchar *object_path,
-		       const gchar *interface_name,
-		       const gchar *signal_name,
-		       GVariant *parameters,
-		       gpointer userdata)
-{
-	struct privdata *priv = userdata;
-	priv->fatal_count++;
-
-	d_info("fatal count: %d\n", priv->fatal_count);
-	if (priv->fatal_count > 3) {
-		d_notice("terminating: excessive client failures\n");
-		terminate_disable_modem();
-	}
-}
-static gboolean reset_fatal(gpointer data)
-{
-	struct privdata *priv = data;
-	d_info("resetting fatal counter\n");
-	priv->fatal_count = 0;
-	return TRUE;
-}
 int main(int argc, char *argv[])
 {
 	struct privdata *priv = &modemdata;
@@ -530,11 +553,6 @@ int main(int argc, char *argv[])
 		return 1;
 
 	
-	g_dbus_connection_signal_subscribe(priv->conn, NULL, "ru.itetra.Connectivity", "status", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE,
-		green_led_control, priv, NULL);
-	g_dbus_connection_signal_subscribe(priv->conn, NULL, "ru.itetra.Connectivity", "fatal", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE,
-		gprs_stall_control, priv, NULL);
-	g_timeout_add_seconds(480, reset_fatal, priv);
 	g_main_loop_run(loop);
 	return 0;
 }

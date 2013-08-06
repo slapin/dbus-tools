@@ -12,7 +12,6 @@ struct privdata {
 	GDBusProxy *mgr;
 	GHashTable *modem_hash;
 	GHashTable *context_hash;
-	int fatal_count;
 };
 
 struct modemdata {
@@ -37,13 +36,18 @@ struct modemdata {
 	guint check_netreg_id;
 	guint check_context_id;
 	guint connman_attach_id;
+	guint modem_online_id;
 
 	/* Watchdog field */
 	int failcount;
 
 	/* State */
 	enum modem_states state;
+	gboolean cstate;
+
 	/* Context */
 	int active_context_counter;
+	/* Fatal count */
+	int fatal_count;
 };
 #endif
