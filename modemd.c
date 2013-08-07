@@ -49,6 +49,7 @@ static void modem_init_termios(int fd)
 const char *modem_cmd1 = "AT\r";
 const char *modem_cmd2 = "AT+CSMS=0\r";
 const char *modem_cmd3 = "AT+CNMI=2,0,2,0,0\r";
+const char *modem_shd_cmd1 = "AT+CPOWD=1\r";
 
 static void do_modem_command(int fd, const char *cmd)
 {
@@ -74,6 +75,27 @@ static void do_modem_command(int fd, const char *cmd)
 		g_usleep(500000);
 	}
 }
+static void do_modem_command_noreply(int fd, const char *cmd)
+{
+		guchar buf[128];
+		int len = 0, i, j;
+
+		for(i = 0; i < 10; i++) {
+			write(fd, cmd, strlen(cmd));
+			g_usleep(1000000);
+			for (j = 0; j < 10; j++) {
+				memset(buf, 0, sizeof(buf));
+				len = read(fd, buf, sizeof(buf) - 1);
+				if (len > 0)
+					break;
+				g_usleep(500000);
+			}
+			if (len > 0)
+				break;
+		}
+		if (len > 0)
+			d_info("buf: %s\n", buf);
+}
 
 static void modem_init(void)
 {
@@ -92,6 +114,19 @@ static void modem_init(void)
 	do_modem_command(fd, modem_cmd2);
 	d_info("running command: %s\n", modem_cmd3);
 	do_modem_command(fd, modem_cmd3);
+	close(fd);
+}
+
+static void modem_shutdown(void)
+{
+	int fd;
+	fd = open(modemdev, O_RDWR | O_NONBLOCK);
+	if (!fd)
+		return; /* Something big happened */
+	modem_init_termios(fd);
+	d_info("running command: %s\n", modem_shd_cmd1);
+	do_modem_command_noreply(fd, modem_shd_cmd1);
+	close(fd);
 }
 
 static void lockdown_modem(GDBusProxy *proxy, int r)
@@ -109,6 +144,7 @@ static void lockdown_modem(GDBusProxy *proxy, int r)
 static void recover_modem(GDBusProxy *proxy)
 {
 	lockdown_modem(proxy, 1);
+	modem_shutdown();
 	modem_power_off();
 	g_usleep(5000000);
 	modem_power_on();
@@ -201,9 +237,10 @@ static void power_modem(GDBusProxy *proxy, struct modemdata *data)
 void terminate_disable_modem(void)
 {
 	d_info("switching modem off and terminating\n");
+	system("pkill ofonod"); /* FIXME */
+	modem_shutdown();
 	modem_power_off();
 	/* We assume here that ofono will be restarted in this case */
-	system("pkill ofonod"); /* FIXME */
 	/* And we'll be restarted too */
 	g_main_loop_quit(loop);
 }
@@ -388,6 +425,8 @@ static void green_led_control(GDBusConnection *connection,
 
 	g_variant_get (parameters, "(b)", &priv->cstate, NULL);
 	d_info("green led status:%d\n", priv->cstate);
+	if (priv->cstate)
+		priv->fatal_count = 0;
 	set_cled_state(priv);
 }
 
@@ -482,6 +521,7 @@ static void manager_signal_cb(GDBusProxy *mgr, gchar *sender_name,
 		g_variant_get (parameters, "(o)", &obj_path);
 		d_info("Modem removed: %s\n", obj_path);
 		removed_modem(data, obj_path);
+		modem_shutdown();
 		modem_power_off();
 	}
 }
