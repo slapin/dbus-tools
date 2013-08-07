@@ -25,6 +25,6 @@ char *fw_getenv(char *s)
                        d_info("u-bootenv : error: %s\n", err->message);
 		return NULL;
 	}else
-		return outp;
+		return g_strchomp(outp);
 }
 
