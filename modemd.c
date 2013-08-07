@@ -22,10 +22,12 @@ static GMainLoop *loop = NULL;
 const char *gsmledfile = "/sys/class/leds/crux:yellow";
 const char *clientledfile = "/sys/class/leds/crux:green";
 const char *modemdev = "/dev/ttySAC0";
+gboolean power_off_modem = 1;
 static GOptionEntry opts[] = {
 	{"gsmstatusled", 'l', 0, G_OPTION_ARG_STRING, &gsmledfile, "path to GSM status led control file", NULL},
 	{"clientstatusled", 'c', 0, G_OPTION_ARG_STRING, &clientledfile, "path to client status led control file", NULL},
 	{"modemdev", 'm', 0, G_OPTION_ARG_STRING, &modemdev, "path to alarm input file", NULL},
+	{"poweroff", 'p', 0, G_OPTION_ARG_NONE, &power_off_modem, "power off modem at exit", NULL},
 	{NULL},
 };
 
@@ -234,6 +236,13 @@ static void power_modem(GDBusProxy *proxy, struct modemdata *data)
 		d_debug("done\n");
 }
 
+static void terminate_disable_modem_atexit(void)
+{
+	d_info("switching modem off and terminating\n");
+	system("pkill ofonod"); /* FIXME */
+	modem_shutdown();
+	modem_power_off();
+}
 void terminate_disable_modem(void)
 {
 	d_info("switching modem off and terminating\n");
@@ -600,6 +609,8 @@ int main(int argc, char *argv[])
 	gpio_init();
 	cold_start = !modem_check_power();
 	debug_init();
+	if (power_off_modem)
+		g_atexit(terminate_disable_modem_atexit);
 	loop = g_main_loop_new(NULL, FALSE);
 	priv->conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
 	if (!priv->conn) {
