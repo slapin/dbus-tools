@@ -236,19 +236,26 @@ static void power_modem(GDBusProxy *proxy, struct modemdata *data)
 		d_debug("done\n");
 }
 
+static int modem_switched_off = 0;
 static void terminate_disable_modem_atexit(void)
 {
+	if (modem_switched_off)
+		return;
 	d_info("switching modem off and terminating\n");
 	system("pkill ofonod"); /* FIXME */
 	modem_shutdown();
 	modem_power_off();
+	modem_switched_off = 1;
 }
 void terminate_disable_modem(void)
 {
+	if (modem_switched_off)
+		return;
 	d_info("switching modem off and terminating\n");
 	system("pkill ofonod"); /* FIXME */
 	modem_shutdown();
 	modem_power_off();
+	modem_switched_off = 1;
 	/* We assume here that ofono will be restarted in this case */
 	/* And we'll be restarted too */
 	g_main_loop_quit(loop);
