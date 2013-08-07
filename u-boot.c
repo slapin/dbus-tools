@@ -10,18 +10,21 @@ char *fw_getenv(char *s)
 	int status;
 	GError *err;
 	char *argv[] = {
-		"fw_printenv",
+		"/sbin/fw_printenv",
 		"-n",
 		s,
 		NULL,
 	};
+	err = NULL;
 	r = g_spawn_sync(NULL, argv, NULL, 0, /* flags*/
 			NULL, NULL, &outp, &errp,
 			&status, &err);
-	d_info("u-boot env: %s = %s\n", s, outp);
-	if (!r)
+       d_info("u-boot env: %s = %s (%s) status = %d\n", s, outp, errp, status);
+       if (!r) {
+               if (err)
+                       d_info("u-bootenv : error: %s\n", err->message);
 		return NULL;
-	else
+	}else
 		return outp;
 }
 
