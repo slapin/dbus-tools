@@ -18,30 +18,24 @@ static void add_call(GDBusConnection *connection,
 	d_notice("AddCall: %s\n", g_variant_get_type_string(parameters));
 
 	GVariant *v;
-	//int i;
 	GVariantIter *iter;
-
+	char* objstr;
 	char* str;
-	//g_print("eek!\n");
-	//i = 0;
-	///status.mode = 0;
-	//    g_variant_get(parameters, "(a{sv})", &iter);
-    //        while(g_variant_iter_loop(iter, "(sv)", &str, &v)) {
-	//	if (!strcmp(str, "mode"))
-	//		g_variant_get(v, "i", &status.mode);
+	char* incoming_number;
 
 	char* number = fw_getenv("pongo_masternum");
 	d_notice("pongo_masternum: %s\n", number);
 
-	g_variant_get(parameters, "(a{sv})", &iter);
+	g_variant_get(parameters, "(oa{sv})", &objstr, &iter);
 
-	while(g_variant_iter_loop(iter, "(sv)", &str, &v)) {
+	while(g_variant_iter_loop(iter, "{sv}", &str, &v)) {
 		if (!strcmp(str, "LineIdentification"))
-			d_notice("Get tel number\n");
-			//g_variant_get(v, "s", );
+			g_variant_get(v, "s", &incoming_number);
+			if(strcmp(number, incoming_number) == 0 )
+			{
+				d_info("Answer on incoming call\n");
+			}
 	}
-
-	//if(strcmp(number,)
 }
 
 static void remove_call(GDBusConnection *connection,
