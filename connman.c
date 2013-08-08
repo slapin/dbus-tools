@@ -19,6 +19,14 @@ static gboolean check_active_context(gpointer data)
 	return FALSE;
 }
 
+gboolean check_connman_attached(gpointer data)
+{
+	struct modemdata *priv = data;
+	if (!priv->gprs_attached)
+		terminate_disable_modem();
+	return FALSE;
+}
+
 void check_connman_prop(void *data, const char *key, GVariant *value)
 {
 	struct modemdata *modem = data;
@@ -35,7 +43,13 @@ void check_connman_prop(void *data, const char *key, GVariant *value)
 				modem->state = MODEM_CONNMAN;
 				g_timeout_add_seconds(15, check_active_context, modem);
 				g_source_remove(modem->connman_attach_id);
+				modem->connman_attach_id = 0;
 			}
+		} else  {
+			if (!modem->connman_attach_id)
+				modem->connman_attach_id =
+					g_timeout_add_seconds(10, check_connman_attached, data);
+			modem->state = MODEM_GPRS;
 		}
 	} else if (g_strcmp0(key, "Powered") == 0) {
 		gboolean val;
@@ -62,14 +76,6 @@ static void connman_signal_cb(GDBusProxy *connman, gchar *sender_name,
 		check_connman_prop(priv, key, value);
 		g_variant_unref(value);
 	}
-}
-
-gboolean check_connman_attached(gpointer data)
-{
-	struct modemdata *priv = data;
-	if (!priv->gprs_attached)
-		terminate_disable_modem();
-	return FALSE;
 }
 
 void connman_stuff(struct modemdata *data)
