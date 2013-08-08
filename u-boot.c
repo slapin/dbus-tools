@@ -19,10 +19,10 @@ char *fw_getenv(char *s)
 	r = g_spawn_sync(NULL, argv, NULL, 0, /* flags*/
 			NULL, NULL, &outp, &errp,
 			&status, &err);
-       d_info("u-boot env: %s = %s (%s) status = %d\n", s, outp, errp, status);
-       if (!r) {
-               if (err)
-                       d_info("u-bootenv : error: %s\n", err->message);
+	d_info("u-boot env: %s = %s (%s) status = %d\n", s, outp, errp, status);
+	if (!r) {
+        	if (err)
+			d_info("u-bootenv : error: %s\n", err->message);
 		return NULL;
 	}else
 		return g_strchomp(outp);
