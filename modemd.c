@@ -50,7 +50,7 @@ static void modem_init_termios(int fd)
 
 const char *modem_cmd1 = "AT\r";
 const char *modem_cmd2 = "AT+CSMS=0\r";
-const char *modem_cmd3 = "AT+CNMI=2,0,2,0,0\r";
+const char *modem_cmd3 = "AT+CNMI=2,1,2,0,0\r";
 const char *modem_shd_cmd1 = "AT+CPOWD=1\r";
 
 static void do_modem_command(int fd, const char *cmd)
