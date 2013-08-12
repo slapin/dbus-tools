@@ -514,6 +514,7 @@ static void add_modem(struct privdata *priv, const char *path)
 		green_led_control, modem, NULL);
 	g_dbus_connection_signal_subscribe(priv->conn, NULL, "ru.itetra.Connectivity", "fatal", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE,
 		gprs_stall_control, modem, NULL);
+	voicecall_init(priv->conn, modem);
 }
 static void removed_modem(struct privdata *priv, const char *path)
 {
@@ -598,7 +599,6 @@ static void ofono_connect(GDBusConnection *conn,
 	}
 	g_variant_iter_free(iter);
 	g_variant_unref(modems);
-	voicecall_init(conn, priv);
 
 }
 static void ofono_disconnect(GDBusConnection *conn,
