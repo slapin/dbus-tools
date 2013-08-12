@@ -22,10 +22,16 @@ static GMainLoop *loop = NULL;
 const char *gsmledfile = "/sys/class/leds/crux:yellow";
 const char *clientledfile = "/sys/class/leds/crux:green";
 const char *modemdev = "/dev/ttySAC0";
+const char *amppath = "/sys/devices/platform/reg-userspace-consumer.5/state";
+int mic_vol = 100;
+int spk_vol = 40;
 gboolean power_off_modem = 1;
 static GOptionEntry opts[] = {
 	{"gsmstatusled", 'l', 0, G_OPTION_ARG_STRING, &gsmledfile, "path to GSM status led control file", NULL},
 	{"clientstatusled", 'c', 0, G_OPTION_ARG_STRING, &clientledfile, "path to client status led control file", NULL},
+	{"amppath", 'a', 0, G_OPTION_ARG_STRING, &amppath, "path to amplifier control regulator", NULL},
+	{"micvolume", 'i', 0, G_OPTION_ARG_INT, &mic_vol, "microphone volume (level)", NULL},
+	{"spkvolume", 'v', 0, G_OPTION_ARG_INT, &spk_vol, "speaker volume (level)", NULL},
 	{"modemdev", 'm', 0, G_OPTION_ARG_STRING, &modemdev, "path to alarm input file", NULL},
 	{"poweroff", 'p', 0, G_OPTION_ARG_NONE, &power_off_modem, "power off modem at exit", NULL},
 	{NULL},
