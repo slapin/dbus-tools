@@ -50,7 +50,9 @@ static void modem_init_termios(int fd)
 
 const char *modem_cmd1 = "AT\r";
 const char *modem_cmd2 = "AT+CSMS=0\r";
-const char *modem_cmd3 = "AT+CNMI=0,1,2,0,0\r";
+const char *modem_cmd3 = "AT+CNMI=2,1,2,0,0\r";
+const char *modem_cmd4 = "AT+CGCLASS=\"B\"\r";
+const char *modem_cmd5 = "AT+CLCC=1\r";
 const char *modem_shd_cmd1 = "AT+CPOWD=1\r";
 
 static void do_modem_command(int fd, const char *cmd)
@@ -116,6 +118,10 @@ static void modem_init(void)
 	do_modem_command(fd, modem_cmd2);
 	d_info("running command: %s\n", modem_cmd3);
 	do_modem_command(fd, modem_cmd3);
+	d_info("running command: %s\n", modem_cmd4);
+	do_modem_command(fd, modem_cmd4);
+	d_info("running command: %s\n", modem_cmd5);
+	do_modem_command(fd, modem_cmd5);
 	close(fd);
 }
 
