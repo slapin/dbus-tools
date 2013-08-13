@@ -61,7 +61,7 @@ const char *modem_cmd4 = "AT+CGCLASS=\"B\"\r";
 const char *modem_cmd5 = "AT+CLCC=1\r";
 const char *modem_shd_cmd1 = "AT+CPOWD=1\r";
 
-static void do_modem_command(int fd, const char *cmd)
+static int do_modem_command_reply(int fd, const char *cmd, const char *reply)
 {
 	int cmd_done = 0;
 	guchar buf[128];
@@ -73,17 +73,27 @@ static void do_modem_command(int fd, const char *cmd)
 			g_usleep(300000);
 			memset(buf, 0, sizeof(buf));
 			read(fd, buf, sizeof(buf) - 1);
-			if (strstr((char *)buf, "OK")) {
+			d_info("reply: %s\n", buf);
+			if (strstr((char *)buf, reply)) {
 				cmd_done = 1;
-				d_info("got OK\n");
+				d_info("got %s\n", reply);
 				break;
 			}
 		}
 		timeout--;
 		if (!timeout)
-			terminate_disable_modem();
+			return -1;
 		g_usleep(500000);
 	}
+	if (cmd_done)
+		return 1;
+	return 0;
+}
+static void do_modem_command(int fd, const char *cmd)
+{
+	int r = do_modem_command_reply(fd, cmd, "OK");
+	if (r <= 0)
+		terminate_disable_modem();
 }
 static void do_modem_command_noreply(int fd, const char *cmd)
 {
@@ -109,7 +119,8 @@ static void do_modem_command_noreply(int fd, const char *cmd)
 
 static void modem_init(void)
 {
-	int fd;
+	int fd, i, r, len;
+	char buf[256];
 	if (!cold_start) {
 		d_info("warm start\n");
 		return;
@@ -128,6 +139,14 @@ static void modem_init(void)
 	do_modem_command(fd, modem_cmd4);
 	d_info("running command: %s\n", modem_cmd5);
 	do_modem_command(fd, modem_cmd5);
+	while(1) {
+		r = do_modem_command_reply(fd, "AT+CCALR?\r", "+CCALR: 1");
+		if (r > 0)
+			break;
+		if (r < 0)
+			terminate_disable_modem();
+		g_usleep(1000000);
+	}
 	close(fd);
 }
 

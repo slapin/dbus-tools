@@ -49,22 +49,32 @@ static void add_call(GDBusConnection *connection,
 	g_variant_get(parameters, "(oa{sv})", &objstr, &iter);
 
 	while(g_variant_iter_loop(iter, "{sv}", &str, &v)) {
-		if (!strcmp(str, "LineIdentification"))
+		d_info("call field: %s\n", str);
+		if (!strcmp(str, "LineIdentification")) {
 			g_variant_get(v, "s", &incoming_number);
-			if(strstr(number, incoming_number) || (strlen(number) < 2))
-			{
+			d_info("call: %s, incoming number: %s\n", objstr, incoming_number);
+			if(strstr(number, incoming_number) || (strlen(number) < 2)) {
 				GVariant *ret;
 				d_info("Answer on incoming call\n");
 				enable_amp();
+				d_info("calling Answer method");
+				err = NULL;
 				g_dbus_connection_call_sync(connection, OFONO_SERVICE,
-					objstr, OFONO_VOICECALL_INTERFACE, "Answer", NULL, NULL,
+					objstr, OFONO_CALL_INTERFACE, "Answer", NULL, NULL,
 					G_DBUS_CALL_FLAGS_NONE, 1500, NULL, &err);
 				/* TODO: check error */
-			} else 
+				if (err)
+					d_notice("error: Answer: %s\n", err->message);
+			} else {
+				err = NULL;
 				g_dbus_connection_call_sync(connection, OFONO_SERVICE,
-					objstr, OFONO_VOICECALL_INTERFACE, "Hangup", NULL, NULL,
+					objstr, OFONO_CALL_INTERFACE, "Hangup", NULL, NULL,
 					G_DBUS_CALL_FLAGS_NONE, 1500, NULL, &err);
 				/* TODO: check error */
+				if (err)
+					d_notice("error: Hangup: %s\n", err->message);
+			}
+		}
 	}
 }
 
