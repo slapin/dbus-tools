@@ -334,6 +334,21 @@ static void check_modem_property(void *data, const char *key, GVariant *value)
 			connman_stuff(data);
 		}
 		g_variant_iter_free(iter);
+	} else if (g_strcmp0(key, "Revision") == 0) {
+		char *rev;
+		const char *fpath = "/lib/firmware/%s.cla";
+		char buf[PATH_MAX];
+		g_variant_get(value, "s", &rev);
+		if (!strncmp("Revision:", rev, 9))
+			rev += 9;
+		d_info("modem firmware revision: %s\n", rev);
+		snprintf(buf, sizeof(buf), fpath, rev);
+		if (g_file_test(buf, G_FILE_TEST_EXISTS))
+			d_info("modem firmware needs no upgrade\n");
+		else {
+			d_info("modem firmware needs upgrade\n");
+			d_info("upgrade firmware from %s\n", buf);
+		}
 	}
 }
 static gboolean check_network_registration(gpointer data)
