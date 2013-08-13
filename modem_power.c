@@ -127,3 +127,17 @@ void modem_power_off(void)
 	power_write(0);
 }
 
+void prepare_modem_reflash(void)
+{
+	modem_power_off();
+	gpio_set_output(138);
+	gpio_set_value(138, 1);
+	gpio_set_value(384, 0);
+	power_write(1);
+}
+void finish_modem_reflash(void)
+{
+	gpio_set_input(138);
+	modem_power_off();
+}
+

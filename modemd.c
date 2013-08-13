@@ -299,6 +299,27 @@ static gboolean check_modem_connman(gpointer data)
 	return FALSE;
 }
 
+static char *find_firmware(void)
+{
+	GError *err = NULL;
+	GDir *d = g_dir_open("/lib/firmware", 0, &err);
+	const char *name;
+	if (err) {
+		g_warning("error openning /lib/firmware\n");
+		return NULL;
+	}
+	while ((name = g_dir_read_name(d))) {
+		if (strstr(name, ".cla"))
+			break;
+	}
+	g_dir_close(d);
+	if (name)
+		return g_build_filename("/lib/firmware", name);
+	else
+		return NULL;
+	
+}
+
 static void check_modem_property(void *data, const char *key, GVariant *value)
 {
 	struct modemdata *modem = data;
@@ -338,6 +359,7 @@ static void check_modem_property(void *data, const char *key, GVariant *value)
 		char *rev;
 		const char *fpath = "/lib/firmware/%s.cla";
 		char buf[PATH_MAX];
+		const char *loader = "/lib/firmware/flash_nor_16bits_hwasic_evp_4902_rel.hex";
 		g_variant_get(value, "s", &rev);
 		if (!strncmp("Revision:", rev, 9))
 			rev += 9;
@@ -346,8 +368,17 @@ static void check_modem_property(void *data, const char *key, GVariant *value)
 		if (g_file_test(buf, G_FILE_TEST_EXISTS))
 			d_info("modem firmware needs no upgrade\n");
 		else {
+			const char *fw = find_firmware();
 			d_info("modem firmware needs upgrade\n");
-			d_info("upgrade firmware from %s\n", buf);
+			d_info("upgrade firmware from %s\n", fw);
+			lockdown_modem(modem->modem, 1);
+			prepare_modem_reflash();
+			snprintf(buf, sizeof(buf),
+				"cd /lib/firmware && /usr/bin/simflasher -d /dev/ttySAC0 -s 460800 -f %s -l %s", fw, loader);
+			system(buf);
+			finish_modem_reflash();
+			lockdown_modem(modem->modem, 0);
+			terminate_disable_modem();
 		}
 	}
 }
