@@ -529,6 +529,8 @@ static void gprs_stall_control(GDBusConnection *connection,
 		       gpointer userdata)
 {
 	struct modemdata *priv = userdata;
+	if (priv->in_voicecall)
+		return;
 	priv->fatal_count++;
 
 	d_info("fatal count: %d\n", priv->fatal_count);
@@ -556,6 +558,7 @@ static void add_modem(struct privdata *priv, const char *path)
 	if (!modem)
 		return;
 	modem->path = g_strdup(path);
+	modem->priv = priv;
 	g_hash_table_insert(priv->modem_hash, g_strdup(path), modem);
 	modem_power_on();
 	modem_init();

@@ -41,6 +41,7 @@ static void add_call(GDBusConnection *connection,
 	char* objstr;
 	char* str;
 	char* incoming_number;
+	struct modemdata *modem = userdata;
 
 	char* number = fw_getenv("pongo_masternum");
 	d_notice("AddCall: %s\n", g_variant_get_type_string(parameters));
@@ -65,6 +66,11 @@ static void add_call(GDBusConnection *connection,
 				/* TODO: check error */
 				if (err)
 					d_notice("error: Answer: %s\n", err->message);
+				else {
+					modem->in_voicecall = 1;
+					modem->voicecall_start = time(NULL);
+					modem->call_path = g_strdup(objstr);
+				}
 			} else {
 				err = NULL;
 				g_dbus_connection_call_sync(connection, OFONO_SERVICE,
@@ -86,33 +92,70 @@ static void remove_call(GDBusConnection *connection,
 		       GVariant *parameters,
 		       gpointer userdata)
 {
+	GError *err;
+	err = NULL;
+	char* objstr;
+	struct modemdata *modem = userdata;
+	g_variant_get(parameters, "(oa{sv})", &objstr, NULL);
 	d_notice("RemoveCall: %s\n", g_variant_get_type_string(parameters));
+	g_dbus_connection_call_sync(connection, OFONO_SERVICE,
+		objstr, OFONO_CALL_INTERFACE, "Hangup", NULL, NULL,
+		G_DBUS_CALL_FLAGS_NONE, 1500, NULL, &err);
+	if (err)
+		d_notice("error: Hangup: %s\n", err->message);
 	disable_amp();
+	modem->in_voicecall = 0;
+	modem->voicecall_start = 0;
+	g_free(modem->call_path);
+	modem->call_path = NULL;
+}
+
+static gboolean check_call_length(gpointer data)
+{
+	struct modemdata *modem = data;
+	GError *err = NULL;
+	if (modem->in_voicecall) {
+		if ((time(NULL) - modem->voicecall_start) > 300) {
+			g_dbus_connection_call_sync(modem->priv->conn, OFONO_SERVICE,
+				modem->call_path, OFONO_CALL_INTERFACE, "Hangup", NULL, NULL,
+				G_DBUS_CALL_FLAGS_NONE, 1500, NULL, &err);
+			if (err)
+				d_notice("error: Hangup: %s\n", err->message);
+		}
+	}
+	return TRUE;
 }
 
 void voicecall_init(GDBusConnection *conn, struct modemdata *priv)
 {
 	extern int mic_vol, spk_vol;
 	GError *err = NULL;
+	d_info("spk: %d mic %d\n", spk_vol, mic_vol);
 	g_dbus_connection_call_sync(conn, OFONO_SERVICE,
 		priv->path, OFONO_VOLUME_INTERFACE, "SetProperty",
 		g_variant_new("(sv)",
 			"SpeakerVolume",
-			g_variant_new_int32(spk_vol)),
+			g_variant_new_byte(spk_vol)),
 		NULL,
 		G_DBUS_CALL_FLAGS_NONE, 1500, NULL, &err);
+	if (err)
+		d_info("error: SpeakerVolume: %s\n", err->message);
+	err = NULL;
 	g_dbus_connection_call_sync(conn, OFONO_SERVICE,
 		priv->path, OFONO_VOLUME_INTERFACE, "SetProperty",
 		g_variant_new("(sv)",
 			"MicrophoneVolume",
-			g_variant_new_int32(mic_vol)),
+			g_variant_new_byte(mic_vol)),
 		NULL,
 		G_DBUS_CALL_FLAGS_NONE, 1500, NULL, &err);
+	if (err)
+		d_info("error: MicrophoneVolume: %s\n", err->message);
 	/* TODO: check error */
+	priv->in_voicecall = 0;
 	g_dbus_connection_signal_subscribe(conn, NULL, OFONO_VOICECALL_INTERFACE, "CallAdded", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE,
 		add_call, priv, NULL);
 	g_dbus_connection_signal_subscribe(conn, NULL, OFONO_VOICECALL_INTERFACE, "CallRemoved", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE,
 		remove_call, priv, NULL);
-	
+	g_timeout_add(10, check_call_length, priv);
 }
 

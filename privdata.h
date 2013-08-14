@@ -15,6 +15,7 @@ struct privdata {
 };
 
 struct modemdata {
+	struct privdata *priv;
 	gchar *path;
 	GDBusProxy *modem;
 	GDBusProxy *netreg;
@@ -50,5 +51,9 @@ struct modemdata {
 	int active_context_counter;
 	/* Fatal count */
 	int fatal_count;
+	/* Voice */
+	int in_voicecall;
+	time_t voicecall_start;
+	char *call_path;
 };
 #endif
