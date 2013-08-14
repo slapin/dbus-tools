@@ -55,5 +55,6 @@ struct modemdata {
 	int in_voicecall;
 	time_t voicecall_start;
 	char *call_path;
+	int insanity;
 };
 #endif

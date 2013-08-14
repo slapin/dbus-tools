@@ -103,6 +103,10 @@ static void remove_call(GDBusConnection *connection,
 		G_DBUS_CALL_FLAGS_NONE, 1500, NULL, &err);
 	if (err)
 		d_notice("error: Hangup: %s\n", err->message);
+	if (time(NULL) - modem->voicecall_start < 3) {
+		modem->insanity = 1;
+		return;
+	}
 	disable_amp();
 	modem->in_voicecall = 0;
 	modem->voicecall_start = 0;
@@ -122,6 +126,9 @@ static gboolean check_call_length(gpointer data)
 			if (err)
 				d_notice("error: Hangup: %s\n", err->message);
 		}
+		/* Chat modem to disable all calls here */
+		if (modem->insanity && ((time(NULL) - modem->voicecall_start) > 150))
+			terminate_disable_modem();
 	}
 	return TRUE;
 }
