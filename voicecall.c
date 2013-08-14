@@ -48,6 +48,13 @@ static void add_call(GDBusConnection *connection,
 	d_notice("pongo_masternum: %s\n", number);
 
 	g_variant_get(parameters, "(oa{sv})", &objstr, &iter);
+	if (modem->insanity) {/* We recovered somehow */
+		modem->in_voicecall = 0;
+		modem->voicecall_start = 0;
+		g_free(modem->call_path);
+		modem->call_path = NULL;
+		modem->insanity = 0;
+	}
 
 	while(g_variant_iter_loop(iter, "{sv}", &str, &v)) {
 		d_info("call field: %s\n", str);
@@ -127,8 +134,10 @@ static gboolean check_call_length(gpointer data)
 				d_notice("error: Hangup: %s\n", err->message);
 		}
 		/* Chat modem to disable all calls here */
-		if (modem->insanity && ((time(NULL) - modem->voicecall_start) > 150))
+		if (modem->insanity && ((time(NULL) - modem->voicecall_start) > 150)) {
+			disable_amp();
 			terminate_disable_modem();
+		}
 	}
 	return TRUE;
 }
