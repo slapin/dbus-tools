@@ -40,6 +40,7 @@ void check_connman_prop(void *data, const char *key, GVariant *value)
 		gboolean val;
 		g_variant_get(value, "b", &val);
 		modem->gprs_attached = val;
+		modem->fatal_count = 0;
 		if (modem->gprs_attached) {
 			if (!modem->active_context_counter) {
 				modem->active_context_counter = 10;
