@@ -48,7 +48,7 @@ void check_connman_prop(void *data, const char *key, GVariant *value)
 		} else  {
 			if (!modem->connman_attach_id)
 				modem->connman_attach_id =
-					g_timeout_add_seconds(120, check_connman_attached, data);
+					g_timeout_add_seconds(90, check_connman_attached, data);
 			modem->state = MODEM_GPRS;
 		}
 	} else if (g_strcmp0(key, "Powered") == 0) {
@@ -95,6 +95,6 @@ void connman_stuff(struct modemdata *data)
 	}
 	g_signal_connect(data->connman, "g-signal", G_CALLBACK(connman_signal_cb), data);
 	get_process_props(data->connman, data, check_connman_prop);
-	data->connman_attach_id = g_timeout_add_seconds(10, check_connman_attached, data);
+	data->connman_attach_id = g_timeout_add_seconds(120, check_connman_attached, data);
 }
 
