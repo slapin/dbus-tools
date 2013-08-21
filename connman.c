@@ -13,8 +13,10 @@ static gboolean check_active_context(gpointer data)
 			get_connection_contexts(modem);
 			modem->active_context_counter--;
 			return TRUE;
-		} else /* Modem stuck */
+		} else {/* Modem stuck */
+			d_info("modem is stuck\n");
 			terminate_disable_modem();
+		}
 	}
 	return FALSE;
 }
@@ -22,8 +24,10 @@ static gboolean check_active_context(gpointer data)
 gboolean check_connman_attached(gpointer data)
 {
 	struct modemdata *priv = data;
-	if (!priv->gprs_attached)
+	if (!priv->gprs_attached) {
+		d_info("connman attaches too long\n");
 		terminate_disable_modem();
+	}
 	return FALSE;
 }
 

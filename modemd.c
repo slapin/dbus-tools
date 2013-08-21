@@ -92,8 +92,10 @@ static int do_modem_command_reply(int fd, const char *cmd, const char *reply)
 static void do_modem_command(int fd, const char *cmd)
 {
 	int r = do_modem_command_reply(fd, cmd, "OK");
-	if (r <= 0)
+	if (r <= 0) {
+		d_info("unable to execute command %s\n", cmd);
 		terminate_disable_modem();
+	}
 }
 static void do_modem_command_noreply(int fd, const char *cmd)
 {
@@ -143,8 +145,10 @@ static void modem_init(void)
 		r = do_modem_command_reply(fd, "AT+CCALR?\r", "+CCALR: 1");
 		if (r > 0)
 			break;
-		if (r < 0)
+		if (r < 0) {
+			d_info("unable to execute command AT+CCALR\n");
 			terminate_disable_modem();
+		}
 		g_usleep(1000000);
 	}
 	close(fd);
@@ -261,9 +265,10 @@ static void power_modem(GDBusProxy *proxy, struct modemdata *data)
 		else
 			break;
 	} while (att--);
-	if (!att)
+	if (!att) {
+		d_notice("unable to power modem up\n");
 		terminate_disable_modem();
-	else
+	} else
 		d_debug("done\n");
 }
 
@@ -314,6 +319,7 @@ static gboolean check_modem_connman(gpointer data)
 		/* Restart ofonod as we run too
 		   long without being online
 		*/
+		d_info("have no ConnectionManager interface for too long\n");
 		terminate_disable_modem();
 	return FALSE;
 }

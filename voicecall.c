@@ -136,6 +136,7 @@ static gboolean check_call_length(gpointer data)
 		/* Chat modem to disable all calls here */
 		if (modem->insanity && ((time(NULL) - modem->voicecall_start) > 150)) {
 			disable_amp();
+			d_info("terminating because of insane call state\n");
 			terminate_disable_modem();
 		}
 	}
