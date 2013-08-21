@@ -48,7 +48,7 @@ void check_connman_prop(void *data, const char *key, GVariant *value)
 		} else  {
 			if (!modem->connman_attach_id)
 				modem->connman_attach_id =
-					g_timeout_add_seconds(30, check_connman_attached, data);
+					g_timeout_add_seconds(120, check_connman_attached, data);
 			modem->state = MODEM_GPRS;
 		}
 	} else if (g_strcmp0(key, "Powered") == 0) {
