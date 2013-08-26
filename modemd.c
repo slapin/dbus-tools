@@ -537,7 +537,8 @@ static void gprs_stall_control(GDBusConnection *connection,
 	struct modemdata *priv = userdata;
 	if (priv->in_voicecall)
 		return;
-	priv->fatal_count++;
+	if (priv->gprs_attached)
+		priv->fatal_count++;
 
 	d_info("fatal count: %d\n", priv->fatal_count);
 	if (priv->fatal_count >= 2 && priv->gprs_attached) {
@@ -577,9 +578,9 @@ static void add_modem(struct privdata *priv, const char *path)
 		g_error_free(err);
 		return;
 	}
-	modem->modem_connman_id = g_timeout_add_seconds(10, check_modem_connman, modem);
-	modem->check_modem_id = g_timeout_add_seconds(3, check_modem_state, modem);
-	modem->check_connman_id = g_timeout_add_seconds(6, check_connman_powered, modem);
+	modem->modem_connman_id = g_timeout_add_seconds(20, check_modem_connman, modem);
+	modem->check_modem_id = g_timeout_add_seconds(6, check_modem_state, modem);
+	modem->check_connman_id = g_timeout_add_seconds(4, check_connman_powered, modem);
 	g_timeout_add_seconds(480, reset_fatal, modem);
 	g_signal_connect(modem->modem, "g-signal", G_CALLBACK (modem_obj_cb), modem);
 	get_process_props(modem->modem, modem, check_modem_property);
@@ -682,6 +683,13 @@ static void ofono_disconnect(GDBusConnection *conn,
 	g_main_loop_quit(loop);
 }
 
+static gboolean modemd_quit(gpointer data)
+{
+	if (power_off_modem)
+		terminate_disable_modem_atexit();
+	return FALSE;
+}
+
 static guint watch;
 int main(int argc, char *argv[])
 {
@@ -715,6 +723,8 @@ int main(int argc, char *argv[])
 		return 1;
 
 	
+	g_unix_signal_add(SIGTERM, modemd_quit, NULL);
+	g_unix_signal_add(SIGHUP, modemd_quit, NULL);
 	g_main_loop_run(loop);
 	return 0;
 }
