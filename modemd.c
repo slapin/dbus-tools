@@ -380,6 +380,7 @@ static void check_modem_property(void *data, const char *key, GVariant *value)
 			connman_stuff(data);
 		}
 		g_variant_iter_free(iter);
+#if 0
 	} else if (g_strcmp0(key, "Revision") == 0) {
 		char *rev;
 		const char *fpath = "/lib/firmware/%s.cla";
@@ -405,6 +406,7 @@ static void check_modem_property(void *data, const char *key, GVariant *value)
 			lockdown_modem(modem->modem, 0);
 			terminate_disable_modem();
 		}
+#endif
 	}
 }
 static gboolean check_network_registration(gpointer data)
