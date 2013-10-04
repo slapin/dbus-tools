@@ -185,6 +185,8 @@ static void activate_context(struct modemdata *data, const char *objpath)
 	get_process_props(data->context, data, check_context_prop);
 	if (!data->context_active) {
 		char *apn = fw_getenv("pongo_apn");
+		char *apn_user = fw_getenv("pongo_apn_user");
+		char *apn_passwd = fw_getenv("pongo_apn_pw");
 		if (!apn)
 			apn = "internet";
 		if (strlen(apn) < 2) {
@@ -192,6 +194,10 @@ static void activate_context(struct modemdata *data, const char *objpath)
 			apn = "internet";
 		}
 		set_proxy_property(data->context, "AccessPointName", g_variant_new_string(apn));
+		if (apn_user)
+			set_proxy_property(data->context, "Username", g_variant_new_string(apn_user));
+		if (apn_passwd)
+			set_proxy_property(data->context, "Password", g_variant_new_string(apn_passwd));
 		set_proxy_property(data->context, "Active", g_variant_new_boolean(TRUE));
 	}
 }
