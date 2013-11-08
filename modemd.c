@@ -26,6 +26,7 @@ const char *amppath = "/sys/devices/platform/reg-userspace-consumer.5/state";
 int mic_vol = 100;
 int spk_vol = 40;
 gboolean power_off_modem = 1;
+static int netreg_to = 80;
 static GOptionEntry opts[] = {
 	{"gsmstatusled", 'l', 0, G_OPTION_ARG_STRING, &gsmledfile, "path to GSM status led control file", NULL},
 	{"clientstatusled", 'c', 0, G_OPTION_ARG_STRING, &clientledfile, "path to client status led control file", NULL},
@@ -34,6 +35,7 @@ static GOptionEntry opts[] = {
 	{"spkvolume", 'v', 0, G_OPTION_ARG_INT, &spk_vol, "speaker volume (level)", NULL},
 	{"modemdev", 'm', 0, G_OPTION_ARG_STRING, &modemdev, "path to alarm input file", NULL},
 	{"poweroff", 'p', 0, G_OPTION_ARG_NONE, &power_off_modem, "power off modem at exit", NULL},
+	{"netreg-timeout", 'n', 0, G_OPTION_ARG_INT, &netreg_to, "network registration timeout", NULL},
 	{NULL},
 };
 
@@ -151,6 +153,7 @@ static void modem_init(void)
 		}
 		g_usleep(1000000);
 	}
+	do_modem_command(fd, "AT*PSSTKI=1\r");
 	close(fd);
 }
 
@@ -436,7 +439,7 @@ static void set_properties(GDBusProxy *proxy, struct modemdata *data)
 	if (!data->modem_powered) {
 		power_modem(proxy, data);
 		data->check_netreg_id =
-			g_timeout_add_seconds(40,
+			g_timeout_add_seconds(netreg_to,
 				check_network_registration, data);
 	}
 	if (!data->modem_online && data->modem_powered) {
