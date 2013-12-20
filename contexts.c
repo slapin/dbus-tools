@@ -35,19 +35,85 @@ static void save_resolv_conf(void)
 	close(fd);
 }
 
+#define PATH_TO_SCRIPT	"/etc/modemd-ppp-configure.sh"
+#define ROUTE "/sbin/route"
+#define IFCONFIG "/sbin/ifconfig"
+
+void execute_ip_script(char *iface, char *ip_addr, char *netmask, char *gateway)
+{
+	char *outp, *errp;
+	char *route_argv[] = {
+		ROUTE,
+		"add",
+		"default",
+		NULL,
+		NULL,
+		NULL,
+	};
+	char *ifconfig_argv[] = {
+		IFCONFIG,
+		iface,
+		ip_addr,
+		"netmask",
+		netmask,
+		NULL,
+	};
+	char *script_argv[] = {
+		PATH_TO_SCRIPT,
+		iface,
+		ip_addr,
+		netmask,
+		gateway,
+		NULL,
+	};
+	gboolean r;
+	GError *err;
+	int status;
+	err = NULL;
+	r = g_spawn_sync(NULL, script_argv, NULL, 0, /* flags*/
+			NULL, NULL, &outp, &errp,
+			&status, &err);
+	d_info("ip config script exec: %s (%s) status = %d\n", outp, errp, status);
+	if (!r) {
+		if (err)
+			d_info("ip config error %s\n", err->message);
+	} else
+		goto out;
+	/* Do traditional ifconfig/route setup */
+	r = g_spawn_sync(NULL, ifconfig_argv, NULL, 0, /* flags*/
+		NULL, NULL, &outp, &errp,
+		&status, &err);
+	d_info("ifconfig exec: %s (%s) status = %d\n", outp, errp, status);
+	if (!r) {
+		if (err)
+			d_info("ifconfig error %s\n", err->message);
+	}
+	if (!gateway) {
+		route_argv[3] = "dev";
+		route_argv[4] = iface;
+	} else {
+		route_argv[3] = "gw";
+		route_argv[4] = gateway;
+	}
+	r = g_spawn_sync(NULL, route_argv, NULL, 0, /* flags*/
+		NULL, NULL, &outp, &errp,
+		&status, &err);
+	d_info("route exec: %s (%s) status = %d\n", outp, errp, status);
+	if (!r) {
+		if (err)
+			d_info("route error %s\n", err->message);
+	}
+out:
+	g_free(outp);
+	g_free(errp);
+}
+
 void do_ipv4_config(void)
 {
-	char cmdbuf[128];
-	snprintf(cmdbuf, sizeof(cmdbuf), "/sbin/ifconfig %s %s netmask %s",
-		ipv4.interface, ipv4.address, ipv4.netmask);
-	g_print("IPv4 command: %s\n", cmdbuf);
-	system(cmdbuf);
 	if (!strcmp(ipv4.gateway, "0.0.0.0"))
-		snprintf(cmdbuf, sizeof(cmdbuf), "/sbin/route add default dev %s", ipv4.interface);
+		execute_ip_script(ipv4.interface, ipv4.address, ipv4.netmask, NULL);
 	else
-		snprintf(cmdbuf, sizeof(cmdbuf), "/sbin/route add default gw %s", ipv4.gateway);
-	g_print("IPv4 command: %s\n", cmdbuf);
-	system(cmdbuf);
+		execute_ip_script(ipv4.interface, ipv4.address, ipv4.netmask, ipv4.gateway);
 	save_resolv_conf();
 }
 
