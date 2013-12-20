@@ -13,6 +13,7 @@
 #include "modemd.h"
 #include "ofono-props.h"
 #include "voicecall.h"
+#include "sms.h"
 #include "debug.h"
 
 struct privdata modemdata;
@@ -679,8 +680,9 @@ static void ofono_connect(GDBusConnection *conn,
 	}
 	g_variant_iter_free(iter);
 	g_variant_unref(modems);
-
+	sms_init(conn);
 }
+
 static void ofono_disconnect(GDBusConnection *conn,
 			     const gchar *name,
 			     gpointer user_data)
